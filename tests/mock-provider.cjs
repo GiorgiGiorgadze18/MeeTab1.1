@@ -1,9 +1,33 @@
+// Isolated fake pg module for the backend test process: never connects to Render.
+const Module=require('node:module');
+const load=Module._load;
+const fakeTable=new Map();
+Module._load=function(request,parent,isMain){
+  if(request==='pg')return {Pool:class {
+    async query(sql,params=[]){
+      if(sql.startsWith('CREATE TABLE'))return {rows:[]};
+      if(sql.startsWith('SELECT recipient'))return {rows:fakeTable.has(params[0])?[{recipient:fakeTable.get(params[0])}]:[]};
+      if(sql.startsWith('INSERT INTO')){fakeTable.set(params[0],params[1]);return {rows:[]}}
+      throw Error('Unexpected mock SQL');
+    }
+  }};
+  return load.apply(this,arguments);
+};
 // Local-only fake provider responses. Never used in production.
 const nativeFetch=global.fetch;
 global.fetch=async (url, opts={})=>{
  const addr=String(url);
- if(addr.startsWith('https://oauth2.googleapis.com/token'))return new Response(JSON.stringify({access_token:'test-local-access',refresh_token:'test-local-refresh',expires_in:3600}),{status:200});
- if(addr.startsWith('https://openidconnect.googleapis.com/v1/userinfo'))return new Response(JSON.stringify({sub:'test-user',name:'Test Fullname',email:'test@example.test'}),{status:200});
+ if(addr.startsWith('https://oauth2.googleapis.com/token')){
+   const code=new URLSearchParams(opts.body).get('code');
+   return new Response(JSON.stringify({access_token:code==='unverified-test'?'test-unverified-access':'test-local-access',refresh_token:'test-local-refresh',expires_in:3600}),{status:200});
+ }
+ if(addr.startsWith('https://openidconnect.googleapis.com/v1/userinfo')){
+   const unverified=opts.headers?.Authorization==='Bearer test-unverified-access';
+   return new Response(JSON.stringify({
+     sub:unverified?'test-unverified-user':'test-user',name:'Test Fullname',
+     email:'test@example.test',email_verified:!unverified
+   }),{status:200});
+ }
  if(addr.startsWith('https://www.googleapis.com/calendar/v3/users/me/calendarList'))return new Response(JSON.stringify({items:[{id:'test-room',summary:'Test Room',accessRole:'owner'}]}),{status:200});
  if(addr.startsWith('https://www.googleapis.com/calendar/v3/calendars/')&&(!opts.method||opts.method==='GET')){
   const now=Date.now();const d=x=>new Date(now+x).toISOString();
@@ -15,6 +39,6 @@ global.fetch=async (url, opts={})=>{
    {id:'creator',summary:'Creator is the author',start:{dateTime:d(2500000)},end:{dateTime:d(3000000)},creator:{displayName:'Creator Name',email:'creator@example.test'},organizer:{displayName:'Room Resource',email:'room@example.test'}}
   ]}),{status:200});
  }
- if(addr==='https://test-hook.example.test/notify')return new Response('{}',{status:200});
+ if(addr==='https://test-hook.example.test/notify'){if(opts.headers?.Authorization!=='Bearer mock-private-webhook-token'||JSON.parse(opts.body).to!=='updated-it@example.test')return new Response('Invalid routing',{status:403});return new Response('{}',{status:200});}
  return nativeFetch(url,opts);
 };

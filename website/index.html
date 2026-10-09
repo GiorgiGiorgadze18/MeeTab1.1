@@ -70,6 +70,25 @@ background:#FBFBFB}
 #ov.on:before{opacity:.4}#ov.on.d2:before{opacity:.68}
 #md{position:relative;width:588px;border-radius:28px;background:var(--coral);color:#fff;opacity:0;transition:opacity .25s}
 #ov.on #md{opacity:1}
+/* IT desk: calm, readable controls within the existing coral dialog */
+#md.it-config{border:1px solid rgba(255,255,255,.2)}
+#md.it-config .mtxt{left:38px;right:38px;text-align:left}
+.it-shell{width:100%;display:flex;flex-direction:column;gap:9px;padding-top:12px}
+.it-head{font-weight:600;font-size:22px;line-height:28px;color:#fff}
+.it-sub{font-size:13px;color:rgba(255,255,255,.85);line-height:19px}
+.it-addr{display:flex;align-items:center;gap:8px;min-height:45px;border-radius:13px;background:rgba(255,255,255,.96);padding:9px 12px;color:#303030}
+.it-addr span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:600}
+.it-edit-btn{border:0;color:#a63127;background:transparent;font-weight:600;font-size:13px;padding:6px;cursor:pointer}
+.it-editor{display:grid;grid-template-columns:1fr;gap:6px}
+.it-editor[hidden],.it-edit-btn[hidden]{display:none!important}
+.it-editor label{font-size:12px;color:#fff}
+.it-editor input{width:100%;height:37px;border-radius:9px;border:1px solid rgba(255,255,255,.7);padding:0 10px;background:#fff;color:#303030;font-size:14px}
+.it-editor input:focus{outline:2px solid #303030;outline-offset:1px}
+.it-save{justify-self:end;border:0;border-radius:10px;background:#fff;color:#a63127;font-weight:600;padding:7px 18px;cursor:pointer}
+.it-save:disabled{opacity:.55}
+.it-message{min-height:18px;font-size:12px;line-height:18px;color:#fff}
+.it-ask{padding-top:4px;border-top:1px solid rgba(255,255,255,.35);font-size:14px;color:#fff}
+@media(prefers-reduced-motion:reduce){#md.it-config{transition:none}}
 .mtxt{position:absolute;left:30px;right:30px;top:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:17px;line-height:22px}
 .mbtns{position:absolute;left:0;right:0;display:flex;justify-content:center;gap:70px}
 /* calendar */
@@ -714,7 +733,66 @@ async function sendIT() {
   try { await API.requestIT(); modal('IT მოთხოვნა მიღებულია შეტყობინების სერვისის მიერ.<br>დაელოდეთ მხარდაჭერის დაკავშირებას.', [['გასაგებია']], 117, 186, 301, 2); }
   catch (e) { console.error(e); modal('მოთხოვნა ვერ გაიგზავნა.<br>სცადეთ თავიდან.', [['გასაგებია']], 117, 186, 301, 2); }
 }
-$('#bIT').onclick = () => modal('ნამდვილად გსურთ IT მოთხოვნის დაფიქსირება?', [['დიახ', sendIT], ['არა']], 103, 181, 282);
+async function openITHelp() {
+  const html = '<div class="it-shell">' +
+    '<div class="it-head">IT დახმარება</div>' +
+    '<div class="it-sub">ტექნიკური დახმარების მისამართი — ' + ROOM.name.replaceAll('<','&lt;').replaceAll('>','&gt;') + '</div>' +
+    '<div class="it-addr"><span id="itCurrent">იტვირთება...</span><button type="button" class="it-edit-btn" id="itEdit" hidden>შეცვლა</button></div>' +
+    '<div class="it-editor" id="itEditor" hidden><label for="itRecipient">შეიყვანეთ IT-ის ელფოსტა</label>' +
+    '<input id="itRecipient" type="email" autocomplete="email" placeholder="it@company.com" maxlength="254" spellcheck="false">' +
+    '<label for="itAdminCode">ადმინისტრატორის კოდი</label>' +
+    '<input id="itAdminCode" type="password" autocomplete="off" placeholder="ადმინისტრატორის საიდუმლო კოდი">' +
+    '<button id="itSave" class="it-save" type="button">დამახსოვრება</button></div>' +
+    '<div class="it-message" id="itHint" aria-live="polite"></div>' +
+    '<div class="it-ask">ნამდვილად გსურთ IT მოთხოვნის დაფიქსირება?</div></div>';
+  await modal(html, [
+    ['მოთხოვნის გაგზავნა', () => modal('ნამდვილად გსურთ IT მოთხოვნის დაფიქსირება?',
+      [['დიახ',sendIT],['უკან',openITHelp]],103,181,282)],
+    ['დახურვა']
+  ], 166, 337, 421, 1, 'it-config');
+  const address=$('#itCurrent'),hint=$('#itHint'),edit=$('#itEdit'),editor=$('#itEditor'),
+        recipient=$('#itRecipient'),code=$('#itAdminCode'),save=$('#itSave');
+  if(!address||!hint)return;
+  address.textContent=CONFIG.itEmail||'არ არის მითითებული';
+  hint.textContent='მისამართის გამოყენება უნდა დადასტურდეს სერვერზე.';
+  let selectedAddress='';
+  try {
+    const config=await MeeTabAuth.getITConfig(ROOM_ID);
+    if(!address.isConnected)return;
+    selectedAddress=config.recipient||'არ არის მითითებული';
+    address.textContent=selectedAddress;
+    hint.textContent=config.recipient?'შეტყობინების მიმღები დადასტურებულია სერვერზე.':'ამ ოთახისთვის IT-ის მისამართი ჯერ არ არის დაყენებული.';
+    edit.hidden=!config.canEdit;
+  } catch(e) {
+    if(address.isConnected)hint.textContent='IT-ის პარამეტრების სანახავად შედით პროფილში, ან გადაამოწმეთ Backend-ის კავშირი.';
+    return;
+  }
+  const resizeEditor=expanded=>{
+    editor.hidden=!expanded;
+    $('#md').style.height=(expanded?565:421)+'px';
+    $('.mbtns').style.top=(expanded?486:337)+'px';
+    $('.mtxt').style.height=(expanded?476:332)+'px';
+  };
+  edit.onclick=()=>{
+    const willOpen=editor.hidden;resizeEditor(willOpen);
+    if(willOpen){recipient.value=selectedAddress;hint.textContent='ცვლილების შესანახად შეიყვანეთ ადმინისტრატორის კოდი.';recipient.focus();}
+  };
+  save.onclick=async()=>{
+    const email=recipient.value.trim().toLowerCase();
+    if(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)){hint.textContent='შეიყვანეთ სწორი ელფოსტის მისამართი.';return;}
+    if(!code.value){hint.textContent='გთხოვთ შეიყვანოთ ადმინისტრატორის კოდი.';return;}
+    save.disabled=true;hint.textContent='მიმდინარეობს სერვერზე შენახვა...';
+    try {
+      const saved=await MeeTabAuth.saveITConfig(ROOM_ID,email,code.value);
+      if(!address.isConnected)return;
+      selectedAddress=saved.recipient;address.textContent=selectedAddress;
+      CONFIG.itEmail=selectedAddress;code.value='';resizeEditor(false);
+      hint.textContent='ელფოსტა შენახულია ამ ოთახისთვის. ✓';
+    } catch(e){hint.textContent=e.message||'ელფოსტა ვერ შეინახა. სცადეთ თავიდან.';}
+    finally{code.value='';save.disabled=false;}
+  };
+}
+$('#bIT').onclick = openITHelp;
 
 /* ===== პარამეტრები: ხმა + ღამის რეჟიმი ===== */
 const store = {get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }};

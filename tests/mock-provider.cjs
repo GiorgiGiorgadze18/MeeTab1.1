@@ -15,6 +15,6 @@ global.fetch=async (url, opts={})=>{
    {id:'creator',summary:'Creator is the author',start:{dateTime:d(2500000)},end:{dateTime:d(3000000)},creator:{displayName:'Creator Name',email:'creator@example.test'},organizer:{displayName:'Room Resource',email:'room@example.test'}}
   ]}),{status:200});
  }
- if(addr==='https://test-hook.example.test/notify'){if(opts.headers?.Authorization!=='Bearer mock-private-webhook-token'||JSON.parse(opts.body).to!=='it-room@example.test')return new Response('Invalid routing',{status:403});return new Response('{}',{status:200});}
+ if(addr==='https://test-hook.example.test/notify'){if(opts.headers?.Authorization!=='Bearer mock-private-webhook-token'||JSON.parse(opts.body).to!=='updated-it@example.test')return new Response('Invalid routing',{status:403});return new Response('{}',{status:200});}
  return nativeFetch(url,opts);
 };

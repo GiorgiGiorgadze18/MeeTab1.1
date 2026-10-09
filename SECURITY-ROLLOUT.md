@@ -47,3 +47,7 @@
 ## CI
 
 `node tests/backend-smoke.cjs` mocks OAuth and calendar operations and includes denied cross-room reads/writes, cross-tenant IT, webhook bearer/recipient, invalid requests, overlaps, and rate limits. CI never needs real user tokens.
+
+
+## Admin-only IT inbox setting
+See [IT-ADMIN-SETUP.md](IT-ADMIN-SETUP.md) for the new room-specific email editor. Server-side saving requires an authorized OAuth identity, `IT_ADMIN_TOKEN`, and `IT_CONFIG_STORAGE_DURABLE=true` with a confirmed persistent disk. No admin secret is stored in public JavaScript. Configure Power Automate separately; no email delivery is claimed without an end-to-end test.

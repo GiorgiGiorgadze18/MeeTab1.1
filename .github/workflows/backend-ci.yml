@@ -22,5 +22,7 @@ jobs:
         run: node --check backend/server.js
       - name: Browser integration JavaScript syntax
         run: node --check website/auth.js && node --check website/site-config.js
+      - name: Inline website JavaScript syntax and IT UI controls
+        run: node tests/frontend-syntax.cjs
       - name: Isolated OAuth, calendar, ACL, IT and rate-limit smoke tests
         run: node tests/backend-smoke.cjs

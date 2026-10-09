@@ -3,7 +3,7 @@ const {spawn}=require('node:child_process'),{randomBytes}=require('node:crypto')
 const assert=require('node:assert/strict');
 const host='http://127.0.0.1:8937', origin='https://ui.example.test';
 const folder=fs.mkdtempSync(path.join(os.tmpdir(),'meetab-test-'));
-const env={...process.env,PORT:'8937',DATA_FILE:path.join(folder,'db.enc'),API_ORIGIN:'https://api.example.test',FRONTEND_URL:origin+'/MeeTab1.1/',DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),GOOGLE_CLIENT_ID:'mock-id',GOOGLE_CLIENT_SECRET:'mock-secret',IT_WEBHOOK_URL:'https://test-hook.example.test/notify',IT_SUPPORT_EMAIL:'it@example.test',IT_WEBHOOK_TOKEN:'mock-private-webhook-token',IT_ROOM_RECIPIENTS_JSON:JSON.stringify({'gulisqari':'it-room@example.test'}),IT_ROOM_LABELS_JSON:JSON.stringify({'gulisqari':'გულისკარი','room2':'ოთახი 2'}),ROOM_ACCESS_JSON:JSON.stringify({'google:test@example.test':{calendars:['test-room'],itRooms:['gulisqari']}}),AUTHOR_NAMES_JSON:JSON.stringify({'directory@example.test':'ლაშა გიორგაძე'})};
+const env={...process.env,PORT:'8937',DATA_FILE:path.join(folder,'db.enc'),API_ORIGIN:'https://api.example.test',FRONTEND_URL:origin+'/MeeTab1.1/',DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),GOOGLE_CLIENT_ID:'mock-id',GOOGLE_CLIENT_SECRET:'mock-secret',IT_WEBHOOK_URL:'https://test-hook.example.test/notify',IT_SUPPORT_EMAIL:'it@example.test',IT_WEBHOOK_TOKEN:'mock-private-webhook-token',IT_ADMIN_TOKEN:'local-test-admin-token-at-least-24-chars',IT_ADMIN_IDENTITIES_JSON:JSON.stringify(['google:test@example.test']),IT_CONFIG_STORAGE_DURABLE:'true',IT_ROOM_RECIPIENTS_JSON:JSON.stringify({'gulisqari':'it-room@example.test'}),IT_ROOM_LABELS_JSON:JSON.stringify({'gulisqari':'გულისკარი','room2':'ოთახი 2'}),ROOM_ACCESS_JSON:JSON.stringify({'google:test@example.test':{calendars:['test-room'],itRooms:['gulisqari']}}),AUTHOR_NAMES_JSON:JSON.stringify({'directory@example.test':'ლაშა გიორგაძე'})};
 const child=spawn(process.execPath,['-r',path.resolve(__dirname,'mock-provider.cjs'),'server.js'],{cwd:path.resolve(__dirname,'../backend'),env,stdio:['ignore','pipe','pipe']});
 let output='';child.stderr.on('data',c=>output+=String(c).slice(0,200));
 const request=async(p,opts={})=>fetch(host+p,{redirect:'manual',...opts});
@@ -17,6 +17,7 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  }
  await check('health','/health',{},200);
  await check('unauthenticated profile','/api/me',{},401);
+ await check('unauthenticated IT settings','/api/it-config?roomId=gulisqari',{},401);
  await check('unauthenticated IT help','/api/it-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roomId:'gulisqari'})},401);
  const start=await check('start OAuth','/auth/google/start',{},302);
  const state=new URL(start.headers.get('location')).searchParams.get('state');assert(state);
@@ -38,6 +39,21 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  const events=(await body(res)).events;
  assert.deepEqual(events.map(x=>x.author),['Test Fullname','Bob Doe','ლაშა გიორგაძე','სახელი მიუწვდომელია','Creator Name']);
  assert(!events.some(e=>e.author.includes('@')),'Never expose an email as the author');
+ const initial=await check('read current IT recipient','/api/it-config?roomId=gulisqari',{headers},200);
+ const initialSettings=await body(initial);
+ assert.equal(initialSettings.recipient,'it-room@example.test');assert.equal(initialSettings.canEdit,true);
+ await check('cross-tenant IT configuration blocked','/api/it-config?roomId=room2',{headers},403);
+ const updateRecipient=(roomId,recipient,adminCode,extra={})=>({method:'POST',
+   headers:{...headers,'Content-Type':'application/json','X-MeeTab-Admin-Code':adminCode,...extra},
+   body:JSON.stringify({roomId,recipient})});
+ await check('wrong admin key blocks changes','/api/it-config',updateRecipient('gulisqari','bad-it@example.test','wrong-secret'),403);
+ await check('unauthorized room config change','/api/it-config',updateRecipient('room2','bad-it@example.test','local-test-admin-token-at-least-24-chars'),403);
+ await check('reject invalid IT email','/api/it-config',updateRecipient('gulisqari','not-an-email','local-test-admin-token-at-least-24-chars'),400);
+ const updated=await check('admin saves per-room IT recipient','/api/it-config',
+   updateRecipient('gulisqari','updated-it@example.test','local-test-admin-token-at-least-24-chars'),200);
+ assert.equal((await body(updated)).recipient,'updated-it@example.test');
+ const reread=await check('saved IT recipient is returned','/api/it-config?roomId=gulisqari',{headers},200);
+ assert.equal((await body(reread)).recipient,'updated-it@example.test');
  await check('invalid IT JSON','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'not-json'},400);
  await check('cross-tenant IT room blocked','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'room2'})},403);
  await check('invalid IT room','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'unknown'})},400);

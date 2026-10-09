@@ -40,12 +40,39 @@ const encrypt = plain => { const iv=crypto.randomBytes(12), c=crypto.createCiphe
 const decrypt = encoded => { const b=Buffer.from(encoded,'base64'), d=crypto.createDecipheriv('aes-256-gcm',key,b.subarray(0,12));d.setAuthTag(b.subarray(12,28));return Buffer.concat([d.update(b.subarray(28)),d.final()]).toString(); };
 let db = {accounts:{},sessions:{}};
 try { db=JSON.parse(decrypt(fs.readFileSync(DATA_FILE,'utf8'))); } catch (e) { if (fs.existsSync(DATA_FILE)) throw e; }
+// Per-room IT recipients are kept in the existing encrypted session data file.
+// Render must mount a durable disk for persistence across restarts.
+if(!db.itRecipients||typeof db.itRecipients!=='object'||Array.isArray(db.itRecipients))db.itRecipients=Object.create(null);
 function save() {const filename=DATA_FILE+'.tmp';fs.writeFileSync(filename,encrypt(JSON.stringify(db)),{mode:0o600}); fs.renameSync(filename,DATA_FILE);}
 const pending=new Map(),tickets=new Map(),locks=new Set();
 // Server-owned IT recipient and webhook; never trust public frontend input for routing.
 const IT_WEBHOOK_URL=process.env.IT_WEBHOOK_URL||'';
 const IT_SUPPORT_EMAIL=process.env.IT_SUPPORT_EMAIL||'';
 const IT_WEBHOOK_TOKEN=process.env.IT_WEBHOOK_TOKEN||''; // Optional private Bearer token, never sent to the browser.
+// Admin changes require BOTH a signed-in allowlisted identity and a private secret.
+// Admin secret must never be put in public HTML or localStorage.
+const IT_ADMIN_TOKEN=process.env.IT_ADMIN_TOKEN||'';
+const IT_CONFIG_STORAGE_DURABLE=process.env.IT_CONFIG_STORAGE_DURABLE==='true';
+let IT_ADMIN_IDENTITIES=new Set();
+if(process.env.IT_ADMIN_IDENTITIES_JSON){
+  try {
+    const raw=JSON.parse(process.env.IT_ADMIN_IDENTITIES_JSON);
+    if(!Array.isArray(raw)||!raw.length||raw.some(x=>typeof x!=='string'||!/^(google|microsoft):[^\s:@]+@[^\s:@]+\.[^\s:@]+$/.test(x)||x!==x.toLowerCase()))throw Error('Invalid admin identities');
+    IT_ADMIN_IDENTITIES=new Set(raw);
+  }catch {console.error('Invalid IT_ADMIN_IDENTITIES_JSON');process.exit(1);}
+}
+if(IT_ADMIN_TOKEN&&IT_ADMIN_TOKEN.length<24){console.error('IT_ADMIN_TOKEN must be at least 24 characters');process.exit(1);}
+const itConfigAdminsReady=Boolean(IT_ADMIN_TOKEN&&IT_ADMIN_IDENTITIES.size&&IT_CONFIG_STORAGE_DURABLE);
+const validItEmail=value=>typeof value==='string'&&value.length<=254&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
+const validItRoom=roomId=>typeof roomId==='string'&&Object.hasOwn(IT_ROOMS,roomId)&&typeof IT_ROOMS[roomId]==='string';
+const savedItRecipient=roomId=>Object.hasOwn(db.itRecipients,roomId)&&validItEmail(db.itRecipients[roomId])?db.itRecipients[roomId]:null;
+const configuredItRecipient=roomId=>savedItRecipient(roomId)||(IT_ROOM_RECIPIENTS?IT_ROOM_RECIPIENTS[roomId]:IT_SUPPORT_EMAIL)||null;
+const isItConfigAdmin=account=>IT_ADMIN_IDENTITIES.has(account.provider+':'+String(account.email||'').trim().toLowerCase());
+const correctAdminToken=input=>{
+  if(typeof input!=='string'||!IT_ADMIN_TOKEN||input.length>1024)return false;
+  const a=crypto.createHash('sha256').update(input).digest(),b=crypto.createHash('sha256').update(IT_ADMIN_TOKEN).digest();
+  return crypto.timingSafeEqual(a,b);
+};
 if(/[\r\n]/.test(IT_WEBHOOK_TOKEN)){console.error('Invalid IT_WEBHOOK_TOKEN');process.exit(1);}
 // Explicit, provider-specific per-account ACL. Configured via private Render environment.
 // Shape: {"google:person@example.com":{"calendars":["room-id"],"itRooms":["room-key"]}}
@@ -136,7 +163,7 @@ const itThrottle=new Map(); // Per-process only; production needs shared distrib
 const IT_COOLDOWN_MS=60_000;
 function send(res,status,obj,origin){
   const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer'};
-  if(origin===front.origin || origin===APP_ORIGIN){headers['Access-Control-Allow-Origin']=origin;headers['Access-Control-Allow-Headers']='Authorization, Content-Type';headers['Access-Control-Allow-Methods']='GET, POST, OPTIONS';headers.Vary='Origin';}
+  if(origin===front.origin || origin===APP_ORIGIN){headers['Access-Control-Allow-Origin']=origin;headers['Access-Control-Allow-Headers']='Authorization, Content-Type, X-MeeTab-Admin-Code';headers['Access-Control-Allow-Methods']='GET, POST, OPTIONS';headers.Vary='Origin';}
   res.writeHead(status,headers);res.end(JSON.stringify(obj));
 }
 function redirect(res,url){res.writeHead(302,{'Location':url,'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'"});res.end();}
@@ -271,12 +298,36 @@ async function handler(req,res){
       if(ROOM_ACCESS)names=names.filter(x=>allowedRoom(account,'calendars',x.id));
       return send(res,200,{calendars:names},origin);
     }
+    if(url.pathname==='/api/it-config'&&req.method==='GET'){
+      const roomId=url.searchParams.get('roomId');
+      if(!validItRoom(roomId))return send(res,400,{error:'Unknown room'},origin);
+      requireRoomAccess(account,'itRooms',roomId);
+      return send(res,200,{roomId,recipient:configuredItRecipient(roomId),canEdit:itConfigAdminsReady&&isItConfigAdmin(account)},origin);
+    }
+    if(url.pathname==='/api/it-config'&&req.method==='POST'){
+      if(rateLimit(req,res,origin,'it-admin-save',hash,5,10*60000))return;
+      if(!itConfigAdminsReady)return send(res,503,{error:'Admin configuration or durable storage unavailable'},origin);
+      if(!isItConfigAdmin(account))return send(res,403,{error:'Admin account required'},origin);
+      if(!correctAdminToken(req.headers['x-meetab-admin-code']))return send(res,403,{error:'Invalid administrator code'},origin);
+      const body=await parseJSON(req);
+      if(!validItRoom(body?.roomId))return send(res,400,{error:'Unknown room'},origin);
+      requireRoomAccess(account,'itRooms',body.roomId);
+      if(!validItEmail(body?.recipient))return send(res,400,{error:'Invalid IT email address'},origin);
+      const email=body.recipient.toLowerCase(),old=savedItRecipient(body.roomId);
+      db.itRecipients[body.roomId]=email;
+      try{save();}catch(e){
+        if(old)db.itRecipients[body.roomId]=old;else delete db.itRecipients[body.roomId];
+        console.error('Unable to persist IT recipient:',e.message);
+        return send(res,503,{error:'Unable to save recipient'},origin);
+      }
+      return send(res,200,{roomId:body.roomId,recipient:email,saved:true},origin);
+    }
     if(url.pathname==='/api/it-request'&&req.method==='POST'){
-      if(!IT_WEBHOOK_URL||(!IT_SUPPORT_EMAIL&&!IT_ROOM_RECIPIENTS))return send(res,503,{error:'IT notifications are not configured'},origin);
+      if(!IT_WEBHOOK_URL)return send(res,503,{error:'IT notifications are not configured'},origin);
       let b;try{b=await parseJSON(req);}catch{return send(res,400,{error:'Invalid request body'},origin);}
-      if(typeof b?.roomId!=='string'||!Object.hasOwn(IT_ROOMS,b.roomId)||typeof IT_ROOMS[b.roomId]!=='string')return send(res,400,{error:'Unknown room'},origin);
+      if(!validItRoom(b?.roomId))return send(res,400,{error:'Unknown room'},origin);
       requireRoomAccess(account,'itRooms',b.roomId);
-      const recipient=IT_ROOM_RECIPIENTS?IT_ROOM_RECIPIENTS[b.roomId]:IT_SUPPORT_EMAIL;
+      const recipient=configuredItRecipient(b.roomId);
       if(!recipient)return send(res,503,{error:'Room IT recipient not configured'},origin);
       const key=hash+':'+b.roomId,now=Date.now();
       if((itThrottle.get(key)||0)>now)return send(res,429,{error:'Please wait before submitting again'},origin);

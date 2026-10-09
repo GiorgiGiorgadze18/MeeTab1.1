@@ -48,7 +48,7 @@ function updateUI(){
   $('#authIdent').textContent=yes?`${name}\n${profile.email||''} · ${profile.provider==='google'?'Google':'Microsoft'}`:'აირჩიე ანგარიში, რომლის კალენდართანაც გინდა დაკავშირება.';
   $('#authLogin').hidden=yes;$('#authConnected').hidden=!yes;
   $('#chosenCalendar').textContent=calendarId?'კალენდარი: '+(choices.find(x=>x.id===calendarId)?.name||calendarId):'ოთახის კალენდარი ჯერ არჩეული არ არის';
-  const author=$('#bookAuthor');if(author)author.textContent=name||'საჭიროა შესვლა';
+  const author=$('#bookAuthor');if(author)author.textContent=yes?(profile?.name&&!profile.name.includes('@')?profile.name:'სახელი მიუწვდომელია'):'საჭიროა შესვლა';
   if(yes)options();
 }
 function open(){updateUI();$('#authOverlay').classList.add('on');}
@@ -77,8 +77,9 @@ async function init(){
   if(ticket){qs.delete('ticket');const clean=location.pathname+(qs.size?'?'+qs:'')+location.hash;history.replaceState(null,'',clean);await window.MeeTabReceiveTicket(ticket);}
   else await restore();
 }
-window.MeeTabAuth={init,open,ready:()=>Boolean(profile&&token&&calendarId),name:()=>profile?.name||profile?.email||'',calendar:()=>calendarId,provider:()=>profile?.provider||'',
+window.MeeTabAuth={init,open,ready:()=>Boolean(profile&&token&&calendarId),name:()=>profile?.name&&!profile.name.includes('@')?profile.name:'',calendar:()=>calendarId,provider:()=>profile?.provider||'',
   async listEvents(){if(!this.ready())return [];const from=new Date(Date.now()-12*3600000).toISOString(),to=new Date(Date.now()+7*86400000).toISOString();return (await call('/api/events?'+new URLSearchParams({calendarId,from,to}))).events.map(x=>({...x,start:new Date(x.start),end:new Date(x.end)}));},
-  async createEvent(ev){if(!this.ready())throw Error('ჯერ შედი პროფილში და აირჩიე ოთახის კალენდარი');return call('/api/events',{method:'POST',body:JSON.stringify({calendarId,title:ev.title,start:new Date(ev.start).toISOString(),end:new Date(ev.end).toISOString(),urgent:ev.urgent})});}
+  async createEvent(ev){if(!this.ready())throw Error('ჯერ შედი პროფილში და აირჩიე ოთახის კალენდარი');return call('/api/events',{method:'POST',body:JSON.stringify({calendarId,title:ev.title,start:new Date(ev.start).toISOString(),end:new Date(ev.end).toISOString(),urgent:ev.urgent})});},
+  async requestIT(roomId){if(!profile||!token)throw Error('IT მოთხოვნისთვის ჯერ შედი პროფილში');return call('/api/it-request',{method:'POST',body:JSON.stringify({roomId})});}
 };
 })();

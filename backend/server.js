@@ -42,6 +42,24 @@ let db = {accounts:{},sessions:{}};
 try { db=JSON.parse(decrypt(fs.readFileSync(DATA_FILE,'utf8'))); } catch (e) { if (fs.existsSync(DATA_FILE)) throw e; }
 function save() {const filename=DATA_FILE+'.tmp';fs.writeFileSync(filename,encrypt(JSON.stringify(db)),{mode:0o600}); fs.renameSync(filename,DATA_FILE);}
 const pending=new Map(),tickets=new Map(),locks=new Set();
+// Server-owned IT recipient and webhook; never trust public frontend input for routing.
+const IT_WEBHOOK_URL=process.env.IT_WEBHOOK_URL||'';
+const IT_SUPPORT_EMAIL=process.env.IT_SUPPORT_EMAIL||'';
+let IT_ROOMS={};
+try{IT_ROOMS=JSON.parse(process.env.IT_ROOM_LABELS_JSON||'{}');}catch{console.error('Invalid IT_ROOM_LABELS_JSON');process.exit(1);}
+// Optional, tenant-managed directory names; keep employee details off public GitHub Pages.
+let AUTHOR_NAMES={};
+try {
+  const names=JSON.parse(process.env.AUTHOR_NAMES_JSON||'{}');
+  if(!names||typeof names!=='object'||Array.isArray(names))throw Error('Invalid names');
+  for(const [email,name] of Object.entries(names)){
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||typeof name!=='string'||
+       !name.trim()||name.length>120||/[\r\n@<>]/.test(name))throw Error('Invalid name mapping');
+    AUTHOR_NAMES[email.toLowerCase()]=name.trim();
+  }
+} catch {console.error('Invalid AUTHOR_NAMES_JSON');process.exit(1);}
+const itThrottle=new Map(); // Per-process only; production needs shared distributed rate limiting.
+const IT_COOLDOWN_MS=60_000;
 function send(res,status,obj,origin){
   const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer'};
   if(origin===front.origin || origin===APP_ORIGIN){headers['Access-Control-Allow-Origin']=origin;headers['Access-Control-Allow-Headers']='Authorization, Content-Type';headers['Access-Control-Allow-Methods']='GET, POST, OPTIONS';headers.Vary='Origin';}
@@ -76,9 +94,24 @@ function calendarRoute(provider,id,kind){
   return `https://graph.microsoft.com/v1.0/me/calendars/${escaped}/${kind==='list'?'calendarView':'events'}`;
 }
 function graphDate(x) { const t=x?.dateTime||''; return /(?:Z|[+-]\d\d:\d\d)$/.test(t)?t:t+'Z'; }
-function normalizedEvent(provider,e){
-  if(provider==='google')return {id:e.id,title:e.summary||'დაკავებულია',start:e.start?.dateTime||e.start?.date,end:e.end?.dateTime||e.end?.date,author:e.organizer?.displayName||e.organizer?.email||'',kind:e.hangoutLink?'Google Meet':'Room Meeting'};
-  return {id:e.id,title:e.subject||'დაკავებულია',start:graphDate(e.start),end:graphDate(e.end),author:e.organizer?.emailAddress?.name||'',kind:e.isOnlineMeeting?'Teams Meeting':'Room Meeting'};
+function eventAuthor(account,e){
+  // Google shared-room calendar: creator is often the person, organizer is the room.
+  // Only render verified provider/directory names; an email is not a full name.
+  const sources=account.provider==='google'?[e.creator,e.organizer]:[e.organizer?.emailAddress];
+  for(const org of sources){
+    if(!org||typeof org!=='object')continue;
+    const display=typeof (org.displayName||org.name)==='string'?(org.displayName||org.name).trim():'';
+    if(display&&!display.includes('@'))return display;
+    const address=String(org.email||org.address||'').trim().toLowerCase();
+    if(address&&account.email&&address===account.email.toLowerCase()&&account.name&&!account.name.includes('@'))return account.name;
+    if(address&&AUTHOR_NAMES[address])return AUTHOR_NAMES[address];
+  }
+  return 'სახელი მიუწვდომელია';
+}
+function normalizedEvent(account,e){
+  const author=eventAuthor(account,e);
+  if(account.provider==='google')return {id:e.id,title:e.summary||'დაკავებულია',start:e.start?.dateTime||e.start?.date,end:e.end?.dateTime||e.end?.date,author,kind:e.hangoutLink?'Google Meet':'Room Meeting'};
+  return {id:e.id,title:e.subject||'დაკავებულია',start:graphDate(e.start),end:graphDate(e.end),author,kind:e.isOnlineMeeting?'Teams Meeting':'Room Meeting'};
 }
 async function listEvents(account,id,from,to){
   const t=await accessToken(account); const path=calendarRoute(account.provider,id,'list'); let url;
@@ -89,7 +122,7 @@ async function listEvents(account,id,from,to){
     out.push(...(j.items||j.value||[])); url=j.nextPageToken ? (path+'?'+new URLSearchParams({timeMin:from,timeMax:to,singleEvents:'true',orderBy:'startTime',pageToken:j.nextPageToken,maxResults:'250'})) : (j['@odata.nextLink']||'');
     if(url&&!url.startsWith(account.provider==='google'?'https://www.googleapis.com/calendar/v3/':'https://graph.microsoft.com/v1.0/'))break;
   }
-  return out.filter(x => x.status!=='cancelled' && x.showAs!=='free').map(e=>normalizedEvent(account.provider,e)).filter(e=>e.start&&e.end);
+  return out.filter(x => x.status!=='cancelled' && x.showAs!=='free').map(e=>normalizedEvent(account,e)).filter(e=>e.start&&e.end);
 }
 const startAuth=(provider,mode,res)=>{
   const p=providers[provider];if(!p?.id||!p.secret)return send(res,503,{error:'Provider is not configured'});
@@ -147,6 +180,22 @@ async function handler(req,res){
       }
       return send(res,200,{calendars:names},origin);
     }
+    if(url.pathname==='/api/it-request'&&req.method==='POST'){
+      if(!IT_WEBHOOK_URL||!IT_SUPPORT_EMAIL)return send(res,503,{error:'IT notifications are not configured'},origin);
+      let b;try{b=await parseJSON(req);}catch{return send(res,400,{error:'Invalid request body'},origin);}
+      if(typeof b?.roomId!=='string'||!Object.hasOwn(IT_ROOMS,b.roomId)||typeof IT_ROOMS[b.roomId]!=='string')return send(res,400,{error:'Unknown room'},origin);
+      const key=hash+':'+b.roomId,now=Date.now();
+      if((itThrottle.get(key)||0)>now)return send(res,429,{error:'Please wait before submitting again'},origin);
+      itThrottle.set(key,now+IT_COOLDOWN_MS);
+      try{
+        const target=new URL(IT_WEBHOOK_URL);
+        if(target.protocol!=='https:')return send(res,503,{error:'IT webhook must use HTTPS'},origin);
+        const alert={roomId:b.roomId,roomName:IT_ROOMS[b.roomId],to:IT_SUPPORT_EMAIL,at:new Date().toISOString(),type:'meeting-room-it-help'};
+        const result=await fetch(target,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(alert),redirect:'error',signal:AbortSignal.timeout(10000)});
+        if(!result.ok)throw Error('IT webhook failed');
+        return send(res,202,{accepted:true},origin); // Webhook accepted; email delivery itself is not confirmed.
+      }catch{itThrottle.delete(key);return send(res,502,{error:'IT notification provider unavailable'},origin);}
+    }
     if(url.pathname==='/api/events'&&req.method==='GET'){
       const id=url.searchParams.get('calendarId'),from=url.searchParams.get('from'),to=url.searchParams.get('to');
       if(!from||!to||!Number.isFinite(Date.parse(from))||!Number.isFinite(Date.parse(to))||Date.parse(to)-Date.parse(from)>15*864e5||Date.parse(to)<=Date.parse(from))return send(res,400,{error:'Invalid calendar date range'},origin);
@@ -169,4 +218,4 @@ async function handler(req,res){
   }catch(e){console.error('Request:',url.pathname,e.message);return send(res,e.status>=400&&e.status<500?e.status:502,{error:e.message||'Service error'},origin);}
 }
 const server=http.createServer(handler);server.listen(PORT,()=>console.log(`MeeTab API listening on ${PORT}`));
-setInterval(()=>{const now=Date.now();for(const [k,v] of pending)if(v.expires<now)pending.delete(k);for(const [k,v] of tickets)if(v.expires<now)tickets.delete(k);},60000).unref();
+setInterval(()=>{const now=Date.now();for(const [k,v] of pending)if(v.expires<now)pending.delete(k);for(const [k,v] of tickets)if(v.expires<now)tickets.delete(k);for(const [k,v] of itThrottle)if(v<now)itThrottle.delete(k);},60000).unref();

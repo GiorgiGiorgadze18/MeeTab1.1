@@ -74,6 +74,8 @@ background:#FBFBFB}
 #grid{left:92px;top:129px;width:1112px;height:618px;overflow-y:auto;display:grid;grid-template-columns:repeat(3,312px);grid-auto-rows:156px;gap:34px 80px;align-content:start;scrollbar-width:none;padding:8px}
 #grid::-webkit-scrollbar{display:none}
 .card{position:relative;border:1px solid var(--ink);border-radius:10px;background:rgba(255,255,255,.6);box-shadow:0 0 4px #000}
+/* Finished meetings stay visible, but are clearly distinguishable from active ones. */
+.card.past{filter:grayscale(1);opacity:.48}
 .card>*{position:absolute;left:18px;margin:0;white-space:nowrap}
 .card h3{top:20px;right:18px;overflow:hidden;text-overflow:ellipsis;font-size:22px;font-weight:600;line-height:28px}
 .card .t{top:50px;font-size:16px;font-weight:500;line-height:20px}
@@ -156,13 +158,12 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
 #qr.gone{opacity:0;transform:scale(.92);pointer-events:none}
 .qc{width:100%;height:100%;box-sizing:border-box;border-radius:20px;background:rgba(255,255,255,.92);border:1px solid #fff;box-shadow:0 8px 28px rgba(60,60,100,.14);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#303030;padding:10px}
 .qc b{font-size:17px;font-weight:700;line-height:20px}.qc span{font-size:13px;line-height:16px;opacity:.7}.qc img{width:184px;height:184px;margin-top:4px;display:block}
-/* Compact Wi-Fi QR only in the narrow/tablet layout.
-   At 1280px: QR spans x=732–872, beside the meeting title (ends at x=730). */
-#stage.narrow #qr{top:318px;right:408px;width:140px;height:168px}
-#stage.narrow .qc{padding:6px;gap:2px;border-radius:14px}
-#stage.narrow .qc b{font-size:12px;line-height:16px;white-space:nowrap}
-#stage.narrow .qc span{font-size:10px;line-height:12px}
-#stage.narrow .qc img{width:112px;height:112px;margin-top:2px}
+/* Keep the tablet QR high above the meeting heading (y=424), not below it. */
+#stage.narrow #qr{top:150px;right:408px;width:112px;height:130px}
+#stage.narrow .qc{padding:5px;gap:2px;border-radius:12px}
+#stage.narrow .qc b{font-size:10px;line-height:13px;white-space:nowrap}
+#stage.narrow .qc span{font-size:9px;line-height:11px}
+#stage.narrow .qc img{width:82px;height:82px;margin-top:1px}
 #stage.narrow #hTitle{width:var(--tw)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* booking */
 .lab{left:85px;font-size:19px}
@@ -426,6 +427,11 @@ const fmtDate = d => {
 
 /* ===== მდგომარეობა ===== */
 let events = [], page = 'home';
+let lastCalendarMinute = -1;
+const eventAuthorName = e => {
+  const name=String(e.author||'').trim();
+  return name&&!name.includes('@')?name:'სახელი მიუწვდომელია';
+};
 const B = {dur: 15, guests: 1, status: 'normal', slot: null};
 const current = () => events.find(e => e.start <= Date.now() && Date.now() < e.end);
 const upcoming = () => events.filter(e => e.end > Date.now());
@@ -438,11 +444,11 @@ function renderHome() {
   $('#hStat b').textContent = c ? 'დაკავებულია' : 'თავისუფალია';
   $('#hTitle').textContent = n ? n.title : 'დღეს შეხვედრები აღარ არის';
   $('#hTime').textContent = n ? `${fmtHM(n.start)} - ${fmtHM(n.end)}` : '';
-  $('#hAuthor').textContent = n ? 'ავტორი: ' + n.author : '';
+  $('#hAuthor').textContent = n ? 'ავტორი: ' + eventAuthorName(n) : '';
   $('#hKind').textContent = n ? n.kind : '';
 }
 function cardHTML(e, extra) {
-  return `<div class="sc"><h4>${esc(e.title)}</h4>${extra}<p>${fmtHM(e.start)}-${fmtHM(e.end)}</p><small>ავტორი: ${esc(e.author)}</small></div>`;
+  return `<div class="sc"><h4>${esc(e.title)}</h4>${extra}<p>${fmtHM(e.start)}-${fmtHM(e.end)}</p><small>ავტორი: ${esc(eventAuthorName(e))}</small></div>`;
 }
 function renderSide() {
   const c = current();
@@ -452,8 +458,9 @@ function renderSide() {
   }).join('');
 }
 function renderCal() {
-  $('#grid').innerHTML = events.map((e, i) => `<div class="card"><span class="st">დაკავებულია</span>
-    <h3>${esc(e.title)}</h3><div class="t">${fmtHM(e.start)}-${fmtHM(e.end)}</div><div class="au">ავტორი: ${esc(e.author)}</div>
+  const now=Date.now();lastCalendarMinute=Math.floor(now/MIN);
+  $('#grid').innerHTML = events.map((e, i) => `<div class="card${+e.end<=now?' past':''}"><span class="st">${+e.end<=now?'დასრულდა':'დაკავებულია'}</span>
+    <h3>${esc(e.title)}</h3><div class="t">${fmtHM(e.start)}-${fmtHM(e.end)}</div><div class="au">ავტორი: ${esc(eventAuthorName(e))}</div>
     <button class="det" data-i="${i}">დეტალები</button></div>`).join('');
 }
 const busy = (s, e) => events.some(x => x.start < e && x.end > s);
@@ -496,6 +503,14 @@ function tick() {
   $('#clock').textContent = fmtHM(d); $('#sdate').textContent = fmtDate(d); $('#weatherClock').textContent = fmtHM(d);
   const [wd, dt] = fmtDate(d).split(', '); $('#sdate2').innerHTML = `<b>${wd}</b>, ${dt}`;
   if (page === 'home') renderHome();
+  if (page === 'cal' && lastCalendarMinute!==Math.floor(Date.now()/MIN)) {
+    lastCalendarMinute=Math.floor(Date.now()/MIN);
+    $$('#grid .card').forEach((card,i)=>{
+      const past=events[i] && +events[i].end<=Date.now();
+      card.classList.toggle('past',Boolean(past));
+      card.querySelector('.st').textContent=past?'დასრულდა':'დაკავებულია';
+    });
+  }
   if (page === 'book') renderBook();
   renderSide();
 }
@@ -621,7 +636,7 @@ async function loadWeather() {
 /* ===== შეხვედრის დეტალები ===== */
 function showDetails(e) {
   const st = e.end <= Date.now() ? 'დასრულდა' : e.start <= Date.now() ? 'მიმდინარეობს' : 'დაგეგმილია';
-  const rows = [['სახელი', e.title], ['ავტორი', e.author], ['დრო', `${fmtHM(e.start)} - ${fmtHM(e.end)} (${Math.round((e.end - e.start) / MIN)} წთ)`],
+  const rows = [['სახელი', e.title], ['ავტორი', eventAuthorName(e)], ['დრო', `${fmtHM(e.start)} - ${fmtHM(e.end)} (${Math.round((e.end - e.start) / MIN)} წთ)`],
     ['ტიპი', e.kind || 'Room Meeting'], ['სტატუსი', st + (e.urgent ? ' · ურგენტული' : '')]];
   if (e.guests) rows.push(['სტუმრები', e.guests]);
   const html = '<div class="st-t">შეხვედრის დეტალები</div>' + rows.map(([l, v], i) => `<div class="dt-r" style="top:${64 + i * 32}px"><span class="dt-l">${l}</span><span class="dt-v">${esc(v)}</span></div>`).join('');

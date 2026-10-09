@@ -47,6 +47,17 @@ const IT_WEBHOOK_URL=process.env.IT_WEBHOOK_URL||'';
 const IT_SUPPORT_EMAIL=process.env.IT_SUPPORT_EMAIL||'';
 let IT_ROOMS={};
 try{IT_ROOMS=JSON.parse(process.env.IT_ROOM_LABELS_JSON||'{}');}catch{console.error('Invalid IT_ROOM_LABELS_JSON');process.exit(1);}
+// Optional, tenant-managed directory names; keep employee details off public GitHub Pages.
+let AUTHOR_NAMES={};
+try {
+  const names=JSON.parse(process.env.AUTHOR_NAMES_JSON||'{}');
+  if(!names||typeof names!=='object'||Array.isArray(names))throw Error('Invalid names');
+  for(const [email,name] of Object.entries(names)){
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||typeof name!=='string'||
+       !name.trim()||name.length>120||/[\r\n@<>]/.test(name))throw Error('Invalid name mapping');
+    AUTHOR_NAMES[email.toLowerCase()]=name.trim();
+  }
+} catch {console.error('Invalid AUTHOR_NAMES_JSON');process.exit(1);}
 const itThrottle=new Map(); // Per-process only; production needs shared distributed rate limiting.
 const IT_COOLDOWN_MS=60_000;
 function send(res,status,obj,origin){
@@ -84,12 +95,17 @@ function calendarRoute(provider,id,kind){
 }
 function graphDate(x) { const t=x?.dateTime||''; return /(?:Z|[+-]\d\d:\d\d)$/.test(t)?t:t+'Z'; }
 function eventAuthor(account,e){
-  // Calendar APIs don't always expose colleagues' names. Do not guess from emails.
-  const org=account.provider==='google'?(e.organizer||e.creator||{}):(e.organizer?.emailAddress||{});
-  const display=(org.displayName||org.name||'').trim();
-  if(display&&!display.includes('@'))return display;
-  const address=org.email||org.address||'';
-  if(address&&account.email&&address.toLowerCase()===account.email.toLowerCase())return account.name||'სახელი მიუწვდომელია';
+  // Google shared-room calendar: creator is often the person, organizer is the room.
+  // Only render verified provider/directory names; an email is not a full name.
+  const sources=account.provider==='google'?[e.creator,e.organizer]:[e.organizer?.emailAddress];
+  for(const org of sources){
+    if(!org||typeof org!=='object')continue;
+    const display=typeof (org.displayName||org.name)==='string'?(org.displayName||org.name).trim():'';
+    if(display&&!display.includes('@'))return display;
+    const address=String(org.email||org.address||'').trim().toLowerCase();
+    if(address&&account.email&&address===account.email.toLowerCase()&&account.name&&!account.name.includes('@'))return account.name;
+    if(address&&AUTHOR_NAMES[address])return AUTHOR_NAMES[address];
+  }
   return 'სახელი მიუწვდომელია';
 }
 function normalizedEvent(account,e){

@@ -3,7 +3,7 @@ const {spawn}=require('node:child_process'),{randomBytes}=require('node:crypto')
 const assert=require('node:assert/strict');
 const host='http://127.0.0.1:8937', origin='https://ui.example.test';
 const folder=fs.mkdtempSync(path.join(os.tmpdir(),'meetab-test-'));
-const env={...process.env,PORT:'8937',DATA_FILE:path.join(folder,'db.enc'),API_ORIGIN:'https://api.example.test',FRONTEND_URL:origin+'/MeeTab1.1/',DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),GOOGLE_CLIENT_ID:'mock-id',GOOGLE_CLIENT_SECRET:'mock-secret',IT_WEBHOOK_URL:'https://test-hook.example.test/notify',IT_SUPPORT_EMAIL:'it@example.test',IT_ROOM_LABELS_JSON:JSON.stringify({'gulisqari':'გულისკარი'})};
+const env={...process.env,PORT:'8937',DATA_FILE:path.join(folder,'db.enc'),API_ORIGIN:'https://api.example.test',FRONTEND_URL:origin+'/MeeTab1.1/',DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),GOOGLE_CLIENT_ID:'mock-id',GOOGLE_CLIENT_SECRET:'mock-secret',IT_WEBHOOK_URL:'https://test-hook.example.test/notify',IT_SUPPORT_EMAIL:'it@example.test',IT_ROOM_LABELS_JSON:JSON.stringify({'gulisqari':'გულისკარი'}),AUTHOR_NAMES_JSON:JSON.stringify({'directory@example.test':'ლაშა გიორგაძე'})};
 const child=spawn(process.execPath,['-r',path.resolve(__dirname,'mock-provider.cjs'),'server.js'],{cwd:path.resolve(__dirname,'../backend'),env,stdio:['ignore','pipe','pipe']});
 let output='';child.stderr.on('data',c=>output+=String(c).slice(0,200));
 const request=async(p,opts={})=>fetch(host+p,{redirect:'manual',...opts});
@@ -29,7 +29,9 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  await check('invalid date range','/api/events?calendarId=test-room&from=bad&to=bad',{headers},400);
  const from=new Date(Date.now()-60000).toISOString(),to=new Date(Date.now()+3600000).toISOString();
  const res=await check('calendar list names','/api/events?'+new URLSearchParams({calendarId:'test-room',from,to}),{headers},200);
- const events=(await body(res)).events;assert.deepEqual(events.map(x=>x.author),['Test Fullname','Bob Doe','სახელი მიუწვდომელია']);
+ const events=(await body(res)).events;
+ assert.deepEqual(events.map(x=>x.author),['Test Fullname','Bob Doe','ლაშა გიორგაძე','სახელი მიუწვდომელია','Creator Name']);
+ assert(!events.some(e=>e.author.includes('@')),'Never expose an email as the author');
  await check('invalid IT JSON','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'not-json'},400);
  await check('invalid IT room','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'unknown'})},400);
  await check('IT webhook accepted','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'gulisqari'})},202);

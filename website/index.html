@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ka"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Meeting Room Pad</title>
+<style>
+@font-face{font-family:'PingGeL';src:url(fonts/PingGeL-Light.otf);font-weight:300;font-display:swap}
+@font-face{font-family:'PingGeL';src:url(fonts/PingGeL-Regular.otf);font-weight:400;font-display:swap}
+@font-face{font-family:'PingGeL';src:url(fonts/PingGeL-Medium.otf);font-weight:500;font-display:swap}
+@font-face{font-family:'PingGeL';src:url(fonts/PingGeL-Bold.otf);font-weight:700;font-display:swap}
+:root{--coral:#FA6E5F;--ink:#303030;--paper:#F9F9F9;--teal:#148380;--red:#E8344D;--font:'PingGeL',system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%;overflow:hidden;background:#222;font-family:var(--font);color:var(--ink)}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+button{transition:scale .12s}button:active{scale:.96}
+.rb:active{scale:1}.rb img{transition:scale .15s cubic-bezier(.2,.8,.3,1)}.rb:active img{scale:.78}
+#stage{position:absolute;left:0;top:0;width:1280px;height:800px;transform-origin:0 0;overflow:hidden;
+background:#FBFBFB}
+#frame{position:absolute;left:calc((100% - 1280px)/2);top:calc((100% - 800px)/2);width:1280px;height:800px}
+#bg{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+#dim{position:absolute;inset:0;background:#0B0E16;opacity:0;transition:opacity .7s ease}
+.blob{position:absolute;background:radial-gradient(closest-side,var(--c),transparent 70%);animation:drift calc(var(--d) * .9) ease-in-out infinite;will-change:transform}
+@keyframes drift{0%{transform:translate(0,0) scale(1)}35%{transform:translate(var(--x),var(--y)) scale(var(--s))}70%{transform:translate(calc(var(--x) * -.5),calc(var(--y) * -.6)) scale(.92)}100%{transform:translate(0,0) scale(1)}}
+.a{position:absolute}.page{position:absolute;inset:0;display:none}.page.on{display:block}
+.mid{transform:translateY(-50%)}
+/* logo */
+.logo{width:153px;height:auto;display:block}
+.hdr{left:85px;top:36px;display:flex;align-items:center;gap:16px;height:46px}
+.hdr b{font-size:32px;font-weight:700}.hdr u{width:1px;height:42px;background:var(--ink)}
+/* home */
+.rule{height:1px;background:var(--ink)}
+.badge{color:#fff;left:90px;top:352px;height:32px;padding:0 15px;border:1px solid var(--ink);border-radius:6px;background:var(--coral);font-size:15px;display:flex;align-items:center}
+.badge.free{background:var(--teal);color:#fff;border-color:var(--teal)}
+/* side panel */
+#side{position:absolute;right:0;top:0;height:100%;width:71px;background:var(--coral);border-radius:32px 0 0 32px;box-shadow:-10px 0 30px rgba(0,0,0,.28);transition:width .3s ease;overflow:hidden;color:#fff;z-index:5}
+#side.full,#side.open{width:407px}
+#side>.in{position:absolute;right:0;top:0;width:407px;height:100%;display:none}
+#side.full>.f,#side.open>.p{display:block}
+#side.full.open>.p{display:none}
+.sbtn{position:absolute;right:20px;top:20px;width:34px;height:34px;display:grid;place-items:center}
+#clock,#clock2{left:0;right:0;top:70px;text-align:center;font-size:92px;font-weight:300;line-height:1.1}
+#sdate,#sdate2{left:0;right:0;top:182px;text-align:center;font-size:24px}
+#side .ln{left:48px;right:48px;top:235px;height:1px;background:rgba(255,255,255,.8)}
+#sideList{left:48px;right:48px;top:261px;bottom:48px;overflow-y:auto;scrollbar-width:none}
+#sideList::-webkit-scrollbar{display:none}
+.sc{height:99px;margin-bottom:25px;border:1px solid #fff;border-radius:12px;padding:16px 18px;position:relative}
+.sc h4{font-size:22px;font-weight:600;line-height:1.2}.sc p{font-size:15px}.sc small{font-size:13px;display:block}
+.sc em{position:absolute;right:18px;top:20px;font-style:normal;font-size:13px}
+#sdate2{top:56px;font-size:26px;font-weight:400}#sdate2 b{font-weight:700}
+#wIcon{left:123px;top:118px;width:160px;height:160px}
+#wTemp{left:0;right:0;top:308px;text-align:center;font-size:52px;font-weight:300;line-height:62px}
+#wCond{left:0;right:0;top:374px;text-align:center;font-size:17px;line-height:22px}
+#wInfo{left:56px;top:425px;width:294px;height:24px;display:flex;flex-direction:row;align-items:center;gap:46px;font-size:15px}
+#wInfo span{display:flex;align-items:center;gap:6px;white-space:nowrap}#wInfo i{font-style:normal}
+#wInfo svg,.pb svg{width:24px;height:24px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#fc{left:56px;right:0;top:496px;height:142px;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none;padding:15px 56px 15px 0}
+#fc::-webkit-scrollbar{display:none}
+.fd{flex:none;width:74px;height:112px;border-radius:13px;background:rgba(110,60,55,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;scroll-snap-align:start;font-size:14px}
+.fd .wi{width:38px;height:38px}.fd b{font-size:17px;font-weight:300}
+.wi img{width:100%;height:100%;object-fit:contain;display:block}
+#pBtns{left:56px;bottom:40px;width:295px;display:flex;justify-content:space-between}
+.pb,.mb{display:flex;align-items:center;justify-content:center;gap:6px;flex:none;width:136px;height:34px;background:rgba(110,60,55,.5);border-radius:10px;color:#fff;font-size:13px;white-space:nowrap}
+.mb{font-size:15px}.pb svg,.pb img{width:20px;height:20px}
+#wInfo img{height:24px;width:auto;display:block}
+#ov{position:absolute;inset:0;display:grid;place-items:center;z-index:20;pointer-events:none;visibility:hidden;transition:visibility 0s .35s}
+#ov.on{pointer-events:auto;visibility:visible;transition:none}
+#ov:before{content:"";position:absolute;inset:0;background:#000;opacity:0;transition:opacity .35s ease}
+#ov.on:before{opacity:.4}#ov.on.d2:before{opacity:.68}
+#md{position:relative;width:588px;border-radius:28px;background:var(--coral);color:#fff;opacity:0;transition:opacity .25s}
+#ov.on #md{opacity:1}
+.mtxt{position:absolute;left:30px;right:30px;top:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:17px;line-height:22px}
+.mbtns{position:absolute;left:0;right:0;display:flex;justify-content:center;gap:70px}
+/* calendar */
+#grid{left:92px;top:129px;width:1112px;height:618px;overflow-y:auto;display:grid;grid-template-columns:repeat(3,312px);grid-auto-rows:156px;gap:34px 80px;align-content:start;scrollbar-width:none;padding:8px}
+#grid::-webkit-scrollbar{display:none}
+.card{position:relative;border:1px solid var(--ink);border-radius:10px;background:rgba(255,255,255,.6);box-shadow:0 0 4px #000}
+.card>*{position:absolute;left:18px;margin:0;white-space:nowrap}
+.card h3{top:20px;right:18px;overflow:hidden;text-overflow:ellipsis;font-size:22px;font-weight:600;line-height:28px}
+.card .t{top:50px;font-size:16px;font-weight:500;line-height:20px}
+.card .au{top:72px;font-size:14px;line-height:18px;color:#555}
+.card .st{left:auto;right:15px;top:10px;font-size:13px;line-height:14px;color:var(--coral);display:flex;align-items:center;gap:6px}
+.card .st:before{content:"";width:10px;height:10px;border-radius:50%;background:var(--coral)}
+.det{top:113px;height:28px;padding:0 20px 0 14px;border-radius:10px;background:var(--ink);color:#fff;font-size:14px;display:flex;align-items:center;gap:10px}
+.det:before{content:"";width:7px;height:7px;border-radius:50%;background:#fff}
+#nav.ctr{transform:translateX(203px)}
+/* settings */
+#md.set .mtxt{display:block;left:0;right:0}
+.st-t{position:absolute;left:0;right:0;top:20px;text-align:center;font-size:18px;font-weight:500}
+.st-r{position:absolute;left:39px;display:flex;align-items:center;gap:62px;height:29px}
+.st-l{font-size:14px;font-weight:500;line-height:18px;flex:none;text-align:left}
+.vc{display:flex;align-items:center;gap:15px;width:274px;height:29px}.vc img{display:block;flex:none}
+#vol{position:relative;width:187px;height:14px;flex:none;touch-action:none;cursor:pointer}
+.vl{position:absolute;left:0;top:6px;width:100%;height:2px;background:#6E3C37}
+.vk{position:absolute;top:0;left:0;width:14px;height:14px;box-sizing:border-box;border-radius:50%;background:#fff;border:1px solid #6E3C37;transition:transform .25s cubic-bezier(.3,1.7,.5,1),box-shadow .25s,left .25s ease}
+#vol.drag .vk{transform:scale(1.55);box-shadow:0 0 0 7px rgba(255,255,255,.28);transition:transform .25s cubic-bezier(.3,1.7,.5,1),box-shadow .25s}
+.nr{display:flex;align-items:center;gap:10px;width:252px;height:34px}.nr span{font-size:14px;font-weight:500;white-space:nowrap}
+#nBtn{width:36px;height:34px;border-radius:15px;background:rgba(110,60,55,.5);display:grid;place-items:center;flex:none}#nBtn img{width:24px;height:24px}
+/* night */
+body.night{--ink:#E8E8EE}
+body.night #dim{opacity:.82}
+body.night .card{background:rgba(24,27,40,.55);box-shadow:0 0 4px rgba(0,0,0,.7)}
+body.night .card .au{color:#A9ABB8}
+body.night .det{color:#1c1f2a}body.night .det:before{background:#1c1f2a}
+body.night .seg button{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.22)}
+body.night .seg button.on{background:var(--ink);color:#1c1f2a;border-color:var(--ink)}
+body.night .inp{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.22)}
+body.night .inp::placeholder{color:#7C7F8E}body.night .dis{background:rgba(255,255,255,.12)}
+body.night #nav{background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.04) 55%,rgba(255,255,255,.1));border-color:rgba(255,255,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 0 16px rgba(255,255,255,.06),0 6px 24px rgba(0,0,0,.35)}
+body.night #nav button svg{fill:rgba(255,255,255,.4)}body.night #nav button.on svg{fill:rgba(255,255,255,.75)}
+body.night .logo{filter:brightness(1.45) saturate(1.2)}
+.card,.inp{transition:background-color .5s,border-color .5s}.seg button{transition:scale .12s,background-color .4s,border-color .4s,color .4s}
+/* სტატუსი */
+#hStat{--st:var(--teal);display:flex;align-items:center;gap:6px;font-size:15px;font-weight:500;color:var(--st);transition:color .5s}
+#hStat b{font-weight:500}
+#hStat .dot{position:relative;flex:none;width:17px;height:17px;border-radius:50%;background:var(--st);filter:drop-shadow(0 0 7px var(--st));animation:beat 1.8s ease-in-out infinite;transition:background-color .5s}
+#hStat .dot:before{content:"";position:absolute;inset:0;border-radius:50%;background:var(--st);animation:ring 1.8s ease-out infinite}
+@keyframes beat{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+@keyframes ring{0%{transform:scale(1);opacity:.55}70%,100%{transform:scale(2.6);opacity:0}}
+/* Smart Animate: სახელი + ლოგო მთავარიდან სათაურში გადაედინება */
+#sTitle,#sLogo,#sDiv{position:absolute;left:0;top:0}
+#sTitle{height:80px;line-height:80px;white-space:nowrap;font-size:68px;font-weight:700;transform:translate(90px,186px);transition:transform .65s cubic-bezier(.65,0,.35,1),font-size .65s cubic-bezier(.65,0,.35,1)}
+#sLogo{width:153px;transform:translate(90px,40px);transition:transform .65s cubic-bezier(.65,0,.35,1)}
+#sDiv{width:1px;height:42px;background:var(--ink);opacity:0;transform:translate(var(--dx,300px),38px) scaleY(.3);transition:transform .65s cubic-bezier(.65,0,.35,1),opacity .3s}
+#frame.hd #sTitle{font-size:32px;transform:translate(85px,19px)}
+#frame.hd #sLogo{transform:translate(var(--lx,314px),44px)}
+#frame.hd #sDiv{opacity:1;transform:translate(var(--dx,300px),38px) scaleY(1);transition:transform .65s cubic-bezier(.65,0,.35,1),opacity .4s .25s}
+/* გვერდების zoom გადასვლა */
+.page.on{animation:pgin .5s cubic-bezier(.2,.7,.2,1) both}
+.page.out{animation:pgout .2s ease-in both}
+@keyframes pgin{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
+@keyframes pgout{to{opacity:0;transform:scale(1.04)}}
+#wTog{right:48px;top:463px;width:120px;height:34px;background:rgba(110,60,55,.5);border-radius:10px;color:#fff;font-size:13px;white-space:nowrap}
+.fd.in{animation:fdin .4s cubic-bezier(.2,.8,.3,1) both}
+@keyframes fdin{from{opacity:0;transform:translateY(16px) scale(.94)}}
+.dt-r{position:absolute;left:39px;right:39px;display:flex;align-items:center;gap:20px;height:20px;font-size:14px;line-height:20px}
+.dt-l{width:96px;flex:none;font-weight:500}
+.dt-v{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#burger .bi{position:relative;display:block;width:30px;height:24px}
+#burger .bi i{position:absolute;height:3.5px;border-radius:2px;background:#fff;transition:transform .45s cubic-bezier(.65,0,.35,1),width .45s cubic-bezier(.65,0,.35,1),left .45s cubic-bezier(.65,0,.35,1),opacity .25s}
+#burger .b1{left:2px;top:1.25px;width:26px}#burger .b2{left:2px;top:10.25px;width:26px}#burger .b3{left:12px;top:19.25px;width:16px}
+#burger.x .b1{transform:translateY(9px) rotate(45deg)}
+#burger.x .b2{opacity:0;transform:scaleX(0)}
+#burger.x .b3{left:2px;width:26px;transform:translateY(-9px) rotate(-45deg)}
+/* QR */
+#qr{position:absolute;right:440px;top:26px;width:289px;height:254px;z-index:2;transition:opacity .45s ease,transform .45s cubic-bezier(.65,0,.35,1)}
+#qr.gone{opacity:0;transform:scale(.92);pointer-events:none}
+.qc{width:100%;height:100%;box-sizing:border-box;border-radius:20px;background:rgba(255,255,255,.92);border:1px solid #fff;box-shadow:0 8px 28px rgba(60,60,100,.14);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#303030;padding:10px}
+.qc b{font-size:17px;font-weight:700;line-height:20px}.qc span{font-size:13px;line-height:16px;opacity:.7}.qc img{width:184px;height:184px;margin-top:4px;display:block}
+#stage.narrow #qr{top:318px}
+#stage.narrow #hTitle{width:var(--tw)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* booking */
+.lab{left:85px;font-size:19px}
+.inp{left:415px;width:709px;height:31px;border:1px solid #D4D4D4;border-radius:6px;background:rgba(255,255,255,.8);padding:0 14px;font:inherit;font-size:16px;color:var(--ink);outline:0}
+.inp::placeholder{color:#C4C4C4}.inp:focus{border-color:var(--teal)}
+.dis{background:#D9D9D9;border:0;display:flex;align-items:center}
+.seg{display:flex;gap:9px}.seg button{width:137px;height:31px;border:1px solid #CFCFCF;border-radius:6px;background:rgba(255,255,255,.8);font-size:16px}
+.seg button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.rb{width:44px;height:44px;display:grid;place-items:center}
+.big{font-size:44px;font-weight:300}
+.cta{top:700px;width:180px;height:41px;padding:0}.cta img{display:block}
+#bCancel{left:97px}#bOk{left:940px}#bOk:disabled{opacity:.4}              
+#warn{left:430px;top:592px;font-size:15px;color:var(--red)}
+/* navbar */
+#nav{left:233px;top:684px;transition:transform .55s cubic-bezier(.65,0,.35,1);will-change:transform;width:408px;height:65px;border-radius:16px;background:linear-gradient(135deg,rgba(255,255,255,.55),rgba(255,255,255,.18) 55%,rgba(255,255,255,.38));border:1px solid rgba(255,255,255,.8);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.4),inset 0 0 16px rgba(255,255,255,.35),0 6px 24px rgba(40,40,90,.10);display:flex;align-items:flex-end;padding-left:24px;gap:13px}
+#nav button{height:63px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:17px;font-weight:700;border-bottom:2px solid transparent;color:var(--ink)}
+#nav button svg{fill:rgba(0,0,0,.3);transition:fill .35s}
+#ind{position:absolute;left:24px;top:0;height:63px;width:72px;overflow:hidden;pointer-events:none;transition:left .5s cubic-bezier(.65,0,.35,1),width .5s cubic-bezier(.65,0,.35,1)}
+#ind:before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(217,217,217,0),#148380);filter:blur(12.4px);border-radius:16px}
+#ind:after{content:'';position:absolute;left:0;right:0;bottom:0;border-bottom:3px solid #148380}
+#nav button.on svg{fill:rgba(0,0,0,.45)}
+#toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 28px;border-radius:12px;font-size:17px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
+#toast.on{opacity:1}
+
+/* MeeTab profile — same coral/teal palette; original page/Smart Animate rules untouched. */
+#profileBtn{left:731px;top:38px;z-index:12;min-width:119px;max-width:140px;height:42px;padding:0 12px;display:flex;align-items:center;gap:9px;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid rgba(48,48,48,.26);border-radius:13px;background:rgba(255,255,255,.58);box-shadow:0 4px 18px rgba(0,0,0,.06);font-size:14px;font-weight:500;transition:transform .25s ease,background .25s ease}
+#profileBtn:hover{transform:translateY(-2px);background:rgba(255,255,255,.9)}
+#profileBtn svg{width:20px;flex:none;fill:none;stroke:var(--ink);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#profileLabel{overflow:hidden;text-overflow:ellipsis}
+#authOverlay{position:absolute;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .3s,visibility .3s}
+#authOverlay.on{opacity:1;visibility:visible;pointer-events:auto}
+#authPanel{width:590px;max-height:740px;overflow:auto;position:relative;background:var(--coral);color:#fff;border-radius:28px;padding:35px 42px 34px;box-shadow:0 18px 65px rgba(0,0,0,.24);transform:translateY(20px) scale(.94);transition:transform .38s cubic-bezier(.2,.9,.3,1.15)}
+#authOverlay.on #authPanel{transform:translateY(0) scale(1)}
+#authPanel h2{font-size:30px;font-weight:600;margin-bottom:10px}
+#authPanel .desc{font-size:16px;line-height:1.5;white-space:pre-line;margin:0 0 22px}
+#authDismiss{position:absolute;right:22px;top:18px;font-size:32px;color:#fff;line-height:1}
+#authPanel .provider{display:flex;align-items:center;gap:16px;width:100%;background:rgba(255,255,255,.95);color:#303030;border-radius:13px;padding:16px 21px;font-size:19px;font-weight:600;margin:14px 0;transition:transform .2s,box-shadow .2s}
+#authPanel .provider:active{transform:scale(.97)}
+#authPanel .picon{width:27px;height:27px;display:grid;place-items:center;background:#fff;border-radius:5px;font:700 24px system-ui}
+#authPanel label{display:block;font-size:15px;margin:14px 0 7px}
+#authPanel select,#authPanel input{height:43px;padding:0 13px;outline:none;border:1px solid #fff;border-radius:10px;width:100%;font:16px var(--font);background:#fff;color:#303030;user-select:text}
+#authPanel .controls{display:flex;gap:14px;margin-top:20px}
+#authPanel .action{background:#fff;color:#303030;border-radius:10px;padding:12px 18px;font-size:16px;font-weight:600;flex:1}
+#authPanel .action.secondary{background:rgba(110,60,55,.5);color:#fff}
+#authMessage{min-height:32px;margin:18px 0 0;font-size:14px;line-height:1.3}
+#authPanel .note{font-size:13px;opacity:.9;line-height:1.5;margin-top:12px}
+</style></head><body>
+<div id="stage">
+<div id="bg"><i class="blob" style="left:-420px;top:500px;width:840px;height:600px;--c:#FFC6DA;--d:38s;--x:300px;--y:-260px;--s:1.15;animation-delay:0s"></i><i class="blob" style="left:-380px;top:216px;width:760px;height:720px;--c:#FFE6D2;--d:44s;--x:380px;--y:-120px;--s:1.1;animation-delay:-12s"></i><i class="blob" style="left:-16px;top:520px;width:800px;height:560px;--c:#DCD0F7;--d:40s;--x:-200px;--y:-240px;--s:1.2;animation-delay:-20s"></i><i class="blob" style="left:286px;top:500px;width:760px;height:600px;--c:#B9D8E6;--d:46s;--x:260px;--y:-300px;--s:1.1;animation-delay:-8s"></i><i class="blob" style="left:516px;top:116px;width:760px;height:760px;--c:#CFD8FF;--d:52s;--x:-420px;--y:200px;--s:1.1;animation-delay:-30s"></i><i class="blob" style="left:664px;top:540px;width:720px;height:520px;--c:#F6ADA3;--d:36s;--x:-300px;--y:-240px;--s:1.2;animation-delay:-5s"></i><i id="dim"></i></div>
+
+<div id="frame">
+<!-- ============ მთავარი ============ -->
+<section class="page on" id="p-home">
+    <div class="a" style="left:90px;top:140px;font-size:22px" >შეხვედრის ოთახი</div>
+  <div class="a" style="right:558px;top:140px;font-size:22px">მაგიდა: 1 / სკამი: #</div>
+    <div class="a rule" style="left:90px;top:306px;width:632px"></div>
+  <div class="a" id="hRow" style="left:90px;top:352px;display:flex;align-items:center;gap:27px">
+    <div class="badge" id="hBadge">ახლანდელი შეხვედრა</div>
+    <div id="hStat"><i class="dot"></i><b>თავისუფალია</b></div>
+  </div>
+  <div class="a" id="hTitle" style="left:90px;top:424px;font-size:34px;font-weight:500;line-height:1.3;width:640px"></div>
+  <div class="a" id="hTime" style="left:90px;top:482px;font-size:34px;font-weight:300"></div>
+  <div class="a" id="hAuthor" style="left:90px;top:552px;font-size:25px"></div>
+  <div class="a" id="hKind" style="left:90px;top:602px;font-size:14px">Teams Meeting / Room Meeting</div>
+</section>
+
+<!-- ============ კალენდარი ============ -->
+<section class="page" id="p-cal">
+    <div class="a" id="grid"></div>
+</section>
+
+<!-- ============ დარეზერვება ============ -->
+<section class="page" id="p-book">
+    <div class="a" id="bDate" style="right:156px;top:40px;font-size:16px;text-align:right"></div>
+  <div class="a" id="bClock" style="right:156px;top:62px;font-size:36px;text-align:right;font-weight:400"></div>
+
+  <div class="a lab mid" style="top:144px">შეხვედრის დასახელება:</div>
+  <input class="a inp mid" id="fTitle" style="top:144px" placeholder="შეხვედრის დასახელება" maxlength="80">
+  <div class="a lab mid" style="top:205px">სტატუსი:</div>
+  <div class="a seg mid" id="fStatus" style="left:415px;top:205px"><button class="on" data-v="normal">ნორმალური</button><button data-v="urgent">ურგენტული</button></div>
+  <div class="a lab mid" style="top:266px">ავტორი:</div>
+  <div class="a inp dis mid" id="bookAuthor" style="top:266px">საჭიროა შესვლა</div>
+  <div class="a lab mid" style="top:327px">სტუმრები:</div>
+  <button class="a rb mid" id="gMinus" style="left:405px;top:327px"><img alt=""></button>
+  <div class="a big mid" id="gNum" style="left:460px;top:327px;width:50px;text-align:center">1</div>
+  <button class="a rb mid" id="gPlus" style="left:517px;top:327px"><img alt=""></button>
+
+  <div class="a rule" style="left:86px;top:410px;width:1038px"></div>
+
+  <div class="a lab mid" style="left:98px;top:487px">ხანგრძლივობა:</div>
+  <div class="a seg mid" id="fDur" style="left:415px;top:487px"><button class="on" data-v="15">15 წუთი</button><button data-v="30">30 წუთი</button></div>
+  <div class="a lab mid" style="left:98px;top:549px">დაწყება/დასრულების დრო:</div>
+  <div class="a big mid" id="tFrom" style="left:476px;top:549px"></div>
+  <div class="a" style="left:576px;top:552px;font-size:15px">-დან</div>
+  <div class="a big mid" id="tTo" style="left:676px;top:549px"></div>
+  <div class="a" style="left:775px;top:552px;font-size:15px">-მდე</div>
+  <div class="a" id="warn"></div>
+  <div class="a lab mid" id="slotLab" style="left:98px;top:640px;display:none">თავისუფალი დრო:</div>
+  <div class="a seg mid" id="fSlots" style="left:415px;top:640px;display:none"></div>
+
+  <button class="a cta" id="bCancel" aria-label="გაუქმება"><img src="assets/icons/btn-cancel.svg" width="180" height="41" alt=""></button>
+  <button class="a cta" id="bOk" aria-label="დაჯავშნე"><img src="assets/icons/btn-book.svg" width="180" height="41" alt=""></button>
+</section>
+
+<!-- ============ საერთო ელემენტები (Smart Animate) ============ -->
+<div id="shared">
+  <img id="sLogo" class="logo" src="assets/Evex-Logo.png" alt="ევექსი">
+  <i id="sDiv"></i>
+  <div id="sTitle" class="rname">გულისკარი</div>
+</div>
+<!-- ============ ნავიგაცია ============ -->
+<nav class="a" id="nav">
+  <button data-go="home" class="on" style="width:72px"><svg width="29" height="30" viewBox="0 0 30 30"><path d="M15 3.5 27 12.5V24a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V12.5z"/></svg></button>
+  <button data-go="cal" style="width:72px"><svg width="24" height="26" viewBox="0 0 26 26"><path d="M7 1h2.5v3H7zM16.500 1H19v3h-2.500z"/><rect x="2" y="3.500" width="22" height="21" rx="3"/></svg></button>
+  <button data-go="book" style="width:170px;margin-left:7px">დარეზერვება <svg width="22" height="26" viewBox="0 0 22 26" style="fill:var(--ink)"><path d="M3 2.500 20 13 3 23.500z" stroke="var(--ink)" stroke-width="2.500" stroke-linejoin="round"/></svg></button>
+  <i id="ind"></i>
+</nav>
+
+</div>
+<!-- ============ მარჯვენა პანელი ============ -->
+<aside id="side" class="full">
+  <div class="in f">
+    <button class="sbtn" id="bGear" aria-label="settings"><img src="assets/icons/settings.svg" width="32" height="32" alt=""></button>
+    <div class="a" id="clock"></div><div class="a" id="sdate"></div><div class="a ln"></div>
+    <div class="a" id="sideList"></div>
+  </div>
+  <div class="in p">
+    <div class="a" id="sdate2"></div>
+    <div class="a wi" id="wIcon"></div><div class="a" id="wTemp">--° C</div><div class="a" id="wCond"></div>
+    <div class="a" id="wInfo">
+      <span><img src="assets/icons/wind.svg" alt=""><i id="wWind">--</i></span>
+      <span><img src="assets/icons/precip.svg" alt=""><i id="wRain">--</i></span>
+      <span><img src="assets/icons/daynight.svg" alt=""><i id="wTime">--:--</i></span>
+    </div>
+    <div class="a" id="fc"></div>
+    <button class="a" id="wTog">დღევანდელი</button>
+    <div class="a" id="pBtns">
+      <button class="pb" id="bSet"><img src="assets/icons/settings.svg" alt="">პარამეტრები</button>
+      <button class="pb" id="bIT"><svg viewBox="0 0 24 24"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>IT დახმარება</button>
+    </div>
+  </div>
+  <button class="sbtn" id="burger" aria-label="menu" style="right:20px;top:24px"><span class="bi"><i class="b1"></i><i class="b2"></i><i class="b3"></i></span></button>
+</aside>
+<div id="qr"><div class="qc"><b>WIFI EVEX GUEST</b><span>Please Scan</span><img src="assets/wifi-qr.svg" alt="Wi-Fi QR"></div></div>
+<div id="ov"><div id="md"><div class="mtxt"></div><div class="mbtns"></div></div></div>
+<div id="toast"></div>
+
+<button class="a" id="profileBtn" aria-label="პროფილი"><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4.5 21c0-4 3-7 7.5-7s7.5 3 7.5 7"/></svg><span id="profileLabel">პროფილი</span></button>
+<div id="authOverlay" role="dialog" aria-modal="true" aria-label="პროფილი">
+  <div id="authPanel"><button id="authDismiss" aria-label="დახურვა">×</button><h2>პროფილი და კალენდარი</h2>
+  <div class="desc" id="authIdent"></div>
+  <div id="authLogin">
+    <button class="provider" id="loginMicrosoft"><span class="picon" style="color:#0078D4">▦</span> Microsoft 365 / Outlook</button>
+    <button class="provider" id="loginGoogle"><span class="picon" style="color:#4285F4">G</span> Google Calendar</button>
+    <p class="note">შესვლა გაიხსნება Microsoft-ის ან Google-ის ოფიციალურ გვერდზე. ანგარიშის პაროლი MeeTab-ში არ შეგყავს.</p>
+  </div>
+  <div id="authConnected" hidden>
+    <p id="chosenCalendar" class="desc"></p>
+    <label for="calendarList">ოთახის კალენდარი</label><select id="calendarList"></select>
+    <label for="calendarManual">ან ჩაწერე ოთახის კალენდრის ID / ელფოსტა</label><input id="calendarManual" placeholder="მაგ.: room@company.com" autocomplete="off" spellcheck="false">
+    <p class="note">აირჩიე მხოლოდ ის ოთახის კალენდარი, რომლის ნახვისა და შეცვლის უფლებაც ამ ანგარიშს აქვს. პირადი კალენდარი ავტომატურად არ აირჩევა.</p>
+    <div class="controls"><button class="action" id="saveCalendar">შენახვა და სინქრონიზაცია</button><button class="action secondary" id="disconnect">გამოსვლა</button></div>
+  </div>
+  <p id="authMessage" role="status"></p></div>
+</div>
+
+</div>
+
+<script src="app-config.js"></script>
+<script src="auth.js"></script>
+<script>
+/* ===== კონფიგურაცია ===== */
+const ROOMS = {   // TODO: დანარჩენი 3 ოთახის სახელი / ფერი / მეილი (არჩევა: index.html?room=room2)
+  gulisqari: {name: 'გულისკარი', email: 'guliskari@ip13.onmicrosoft.com', color: '#FA6E5F'},
+  room2: {name: 'ოთახი 2', email: 'room2@company.com', color: '#FA6E5F'},
+  room3: {name: 'ოთახი 3', email: 'room3@company.com', color: '#FA6E5F'},
+  room4: {name: 'ოთახი 4', email: 'room4@company.com', color: '#FA6E5F'}
+};
+const ROOM = ROOMS[new URLSearchParams(location.search).get('room')] || ROOMS.gulisqari;
+const CONFIG = {
+  source: 'account',                    // account -> Google/Microsoft OAuth backend. mock only for explicit demos.
+  apiBase: '/api',                      // თქვენი ბექენდ-პროქსი Outlook-ისთვის
+  room: ROOM.email,                     // OUTLOOK: ოთახის mailbox
+  itEmail: 'clinics_it_support@evex.ge', canFuture: true, itWebhook: '',            // IT მოთხოვნების მისამართი
+  tz: 'Asia/Tbilisi',
+  refreshSec: 60
+};
+
+/* ===== მონაცემები (OUTLOOK ინტეგრაცია აქ) ===== */
+const MIN = 60000, now0 = Date.now();
+const mockEvents = (() => {
+  const free = location.search.includes('free');           // ?free = თავისუფალი ოთახი
+  const o = free ? 90 : -30;
+  return [0, 120, 180, 270, 360, 450, 540, 630, 720, 810].map((d, i) => ({
+    title: i % 2 ? 'Project Sync' : 'IT Meeting',
+    start: new Date(now0 + (o + d) * MIN), end: new Date(now0 + (o + d + (i ? 60 : 90)) * MIN),
+    author: 'სახელი გვარი', kind: 'Teams Meeting / Room Meeting'
+  }));
+})();
+const EVX = {   // Meeting Room 365-თან ხიდი: მშობელი გვერდი კითხულობს მის კალენდარს და გვიგზავნის postMessage-ით
+  evs: [], local: [], pending: {},
+  events() { const now = Date.now(); this.local = this.local.filter(l => l.until > now); return this.evs.concat(this.local.filter(l => !this.evs.some(r => Math.abs(r.start - l.start) < 60000))); },
+  send(type, data) { return new Promise(res => { const id = Math.random().toString(36).slice(2); this.pending[id] = res; parent.postMessage({evx: type, id, ...data}, '*');
+    setTimeout(() => { if (this.pending[id]) { delete this.pending[id]; res(false); } }, 6000); }); }
+};
+addEventListener('message', e => {
+  const m = e.data || {};
+  if (m.evx === 'events') { EVX.evs = (m.events || []).map(x => ({...x, start: new Date(x.start), end: new Date(x.end)})); load(); }
+  if (m.evx === 'reply' && EVX.pending[m.id]) { EVX.pending[m.id](m.ok); delete EVX.pending[m.id]; }
+});
+if (CONFIG.source === 'mr365') parent.postMessage({evx: 'ready'}, '*');
+const API = {
+  async list() {
+    if (CONFIG.source === 'account') return MeeTabAuth.listEvents();
+    if (CONFIG.source === 'mr365') return EVX.events();
+    if (CONFIG.source === 'graph') {
+      // OUTLOOK: ბექენდი იძახებს Microsoft Graph-ს:
+      // GET /users/{room}/calendarView?startDateTime=..&endDateTime=..  (დღევანდელი დღე, თბილისის დრო)
+      const r = await fetch(`${CONFIG.apiBase}/events?room=${encodeURIComponent(CONFIG.room)}`);
+      return (await r.json()).map(x => ({
+        title: x.subject, start: new Date(x.start), end: new Date(x.end),
+        author: x.organizer?.emailAddress?.name || '', kind: x.isOnlineMeeting ? 'Teams Meeting' : 'Room Meeting'
+      }));
+    }
+    return mockEvents;
+  },
+  async create(ev) {
+    if (CONFIG.source === 'account') return MeeTabAuth.createEvent(ev);
+    if (CONFIG.source === 'mr365') {   // MR365-ის ჩაშენებული "ახლავე დაჯავშნა" (15/30 წთ)
+      if (!await EVX.send('book', {minutes: Math.round((ev.end - ev.start) / MIN)})) throw new Error('book failed');
+      EVX.local.push({...ev, until: Date.now() + 90000}); return;
+    }
+    if (CONFIG.source === 'graph') {
+      // OUTLOOK: POST /users/{room}/events  (subject, start, end, importance: urgent ? 'high':'normal')
+      await fetch(`${CONFIG.apiBase}/events`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({room: CONFIG.room, ...ev})});
+    } else mockEvents.push(ev), mockEvents.sort((a,b)=>a.start-b.start);
+  },
+  async requestIT() {
+    if (CONFIG.itWebhook) {   // მაგ. Power Automate HTTP trigger, რომელიც IT-ს მეილზე წერილს აგზავნის
+      await fetch(CONFIG.itWebhook, {method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'text/plain'}, body: JSON.stringify({room: ROOM.name, email: ROOM.email, to: CONFIG.itEmail, at: new Date().toISOString()})}); return;
+    }
+    if (CONFIG.source === 'mr365' || CONFIG.source === 'account') throw new Error('IT webhook is not configured');
+    if (CONFIG.source === 'graph') {
+      // MAIL: ბექენდი აგზავნის წერილს IT-ის მეილზე (Graph: POST /users/{room}/sendMail) — "ოთახს სჭირდება დახმარება"
+      const r = await fetch(`${CONFIG.apiBase}/it-request`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({room: ROOM.name, from: ROOM.email, to: CONFIG.itEmail, at: new Date().toISOString()})});
+      if (!r.ok) throw new Error('it-request failed');
+    } else console.log('IT request (mock):', ROOM.name, '->', CONFIG.itEmail);
+  }
+};
+
+/* ===== დრო (თბილისი) ===== */
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const fmtHM = d => new Intl.DateTimeFormat('en-GB',{timeZone:CONFIG.tz,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d);
+const esc = x => String(x ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const GE_DAYS = ['კვირა','ორშაბათი','სამშაბათი','ოთხშაბათი','ხუთშაბათი','პარასკევი','შაბათი'];
+const GE_SHORT = ['კვი','ორშ','სამ','ოთხ','ხუთ','პარ','შაბ'];
+const fmtDate = d => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.tz,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d).map(x=>[x.type,x.value]));
+  const wd = GE_DAYS[{Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}[new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.tz,weekday:'short'}).format(d)]];
+  return `${wd}, ${p.month}/${p.day}/${p.year}`;
+};
+
+/* ===== მდგომარეობა ===== */
+let events = [], page = 'home';
+const B = {dur: 15, guests: 1, status: 'normal', slot: null};
+const current = () => events.find(e => e.start <= Date.now() && Date.now() < e.end);
+const upcoming = () => events.filter(e => e.end > Date.now());
+
+/* ===== რენდერი ===== */
+function renderHome() {
+  const c = current(), n = c || upcoming()[0], b = $('#hBadge');   // თავისუფალია -> ვაჩვენებთ შემდეგ შეხვედრას
+  b.textContent = c ? 'ახლანდელი შეხვედრა' : 'შემდეგი შეხვედრა'; b.style.display = n ? '' : 'none';
+  $('#hStat').style.setProperty('--st', c ? 'var(--coral)' : 'var(--teal)');
+  $('#hStat b').textContent = c ? 'დაკავებულია' : 'თავისუფალია';
+  $('#hTitle').textContent = n ? n.title : 'დღეს შეხვედრები აღარ არის';
+  $('#hTime').textContent = n ? `${fmtHM(n.start)} - ${fmtHM(n.end)}` : '';
+  $('#hAuthor').textContent = n ? 'ავტორი: ' + n.author : '';
+  $('#hKind').textContent = n ? n.kind : '';
+}
+function cardHTML(e, extra) {
+  return `<div class="sc"><h4>${esc(e.title)}</h4>${extra}<p>${fmtHM(e.start)}-${fmtHM(e.end)}</p><small>ავტორი: ${esc(e.author)}</small></div>`;
+}
+function renderSide() {
+  const c = current();
+  $('#sideList').innerHTML = upcoming().map(e => {
+    const h = cardHTML(e, e === c ? '<em>(ახლა)</em>' : '');
+    return h;
+  }).join('');
+}
+function renderCal() {
+  $('#grid').innerHTML = events.map((e, i) => `<div class="card"><span class="st">დაკავებულია</span>
+    <h3>${esc(e.title)}</h3><div class="t">${fmtHM(e.start)}-${fmtHM(e.end)}</div><div class="au">ავტორი: ${esc(e.author)}</div>
+    <button class="det" data-i="${i}">დეტალები</button></div>`).join('');
+}
+const busy = (s, e) => events.some(x => x.start < e && x.end > s);
+function times() {
+  if (B.slot && B.slot <= Date.now()) B.slot = null;
+  const s0 = new Date(Math.floor(Date.now() / MIN) * MIN), nowBusy = busy(s0, new Date(+s0 + B.dur * MIN));
+  const s = B.slot && nowBusy ? new Date(B.slot) : s0, e = new Date(+s + B.dur * MIN);
+  return {s, e, conflict: busy(s, e), nowBusy};
+}
+// უახლოესი თავისუფალი დროები არჩეული ხანგრძლივობისთვის
+function slots(dur) {
+  const out = []; let t = Math.ceil(Date.now() / MIN) * MIN; const end = t + 12 * 3600000;
+  while (out.length < 4 && t < end) {
+    const e = t + dur * MIN, c = events.find(x => x.start < e && x.end > t);
+    if (c) t = Math.max(t + MIN, Math.ceil(+c.end / MIN) * MIN); else { out.push(t); t += dur * MIN; }
+  }
+  return out;
+}
+let slotSig = '';
+function renderSlots(show) {
+  const row = $('#fSlots'); row.style.display = $('#slotLab').style.display = show ? '' : 'none';
+  if (!show) { slotSig = ''; return; }
+  const list = slots(B.dur), sig = list.join() + '|' + B.slot; if (sig === slotSig) return; slotSig = sig;
+  row.innerHTML = list.map(t => `<button data-t="${t}" class="${t === B.slot ? 'on' : ''}">${fmtHM(new Date(t))}–${fmtHM(new Date(t + B.dur * MIN))}</button>`).join('') || '<span style="font-size:15px">დღეს თავისუფალი დრო აღარ არის</span>';
+}
+function renderBook() {
+  const {s, e, conflict, nowBusy} = times();
+  $('#tFrom').textContent = fmtHM(s); $('#tTo').textContent = fmtHM(e);
+  $('#bDate').textContent = fmtDate(new Date()); $('#bClock').textContent = fmtHM(new Date());
+  $('#gNum').textContent = B.guests;
+  $('#gMinus img').src = `assets/icons/minus-${B.guests > 1 ? 'on' : 'off'}.svg`;
+  $('#gPlus img').src = `assets/icons/plus-${B.guests < 50 ? 'on' : 'off'}.svg`;
+  $('#bOk').disabled = conflict || (CONFIG.source === 'account' && !MeeTabAuth.ready());
+  $('#warn').textContent = CONFIG.source === 'account' && !MeeTabAuth.ready() ? 'ჯერ შედი პროფილში და აირჩიე ოთახის კალენდარი' : nowBusy && !B.slot ? (CONFIG.canFuture ? 'ოთახი ამ დროს დაკავებულია — აირჩიეთ სხვა დრო' : 'ოთახი ამ დროს დაკავებულია') : '';
+  renderSlots(nowBusy && CONFIG.canFuture);
+}
+
+function tick() {
+  const d = new Date();
+  $('#clock').textContent = fmtHM(d); $('#sdate').textContent = fmtDate(d);
+  const [wd, dt] = fmtDate(d).split(', '); $('#sdate2').innerHTML = `<b>${wd}</b>, ${dt}`;
+  if (page === 'home') renderHome();
+  if (page === 'book') renderBook();
+  renderSide();
+}
+const rnd = d => new Date(Math.round(+d / MIN) * MIN);
+async function load() { try { events = (await API.list()).map(x => ({...x, start: rnd(x.start), end: rnd(x.end)})); } catch (e) { console.error('Calendar sync:',e); events=[]; toast('კალენდარი ვერ დასინქრონირდა — შეამოწმე პროფილი'); } renderCal(); tick(); }
+
+/* ===== ნავიგაცია ===== */
+function go(p) {
+  page = p;
+  showPage(p); $('#frame').classList.toggle('hd', p !== 'home'); $('#qr').classList.toggle('gone', p !== 'home');
+  $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.go === p));
+  const side = $('#side'); side.classList.remove('open'); $('#burger').classList.remove('x'); side.classList.toggle('full', p === 'home');
+  $('#burger').style.display = p === 'home' ? 'none' : '';
+  moveInd(); navPos();
+  tick();
+}
+$$('#nav button').forEach(b => b.onclick = () => go(b.dataset.go));
+function setOpen(v) { $('#side').classList.toggle('open', v); $('#burger').classList.toggle('x', v); navPos(); }
+$('#burger').onclick = () => setOpen(!$('#side').classList.contains('open'));
+document.addEventListener('pointerdown', e => { if ($('#side').classList.contains('open') && !e.target.closest('#side, #ov')) setOpen(false); });
+
+/* ===== დარეზერვება ===== */
+function seg(id, key, cast) {
+  $$(`${id} button`).forEach(b => b.onclick = () => {
+    $$(`${id} button`).forEach(x => x.classList.toggle('on', x === b));
+    B[key] = cast ? +b.dataset.v : b.dataset.v; if (key === 'dur') B.slot = null; renderBook();
+  });
+}
+seg('#fStatus', 'status'); seg('#fDur', 'dur', true);
+$('#fSlots').onclick = ev => { const b = ev.target.closest('button'); if (!b) return; const t = +b.dataset.t; B.slot = B.slot === t ? null : t; slotSig = ''; renderBook(); };
+const bump = () => $('#gNum').animate([{transform: 'translateY(-50%) scale(1.3)', opacity: .5}, {transform: 'translateY(-50%) scale(1)', opacity: 1}], {duration: 240, easing: 'cubic-bezier(.2,.8,.3,1)'});
+$('#gMinus').onclick = () => { if (B.guests > 1) { B.guests--; renderBook(); bump(); } };
+$('#gPlus').onclick = () => { if (B.guests < 50) { B.guests++; renderBook(); bump(); } };
+function toast(t) { const x = $('#toast'); x.textContent = t; x.classList.add('on'); setTimeout(() => x.classList.remove('on'), 2200); }
+function resetForm() {
+  Object.assign(B, {dur: 15, guests: 1, status: 'normal', slot: null}); $('#fTitle').value = '';
+  $$('#fStatus button').forEach((b, i) => b.classList.toggle('on', i === 0));
+  $$('#fDur button').forEach((b, i) => b.classList.toggle('on', i === 0));
+}
+$('#bCancel').onclick = () => { resetForm(); go('home'); };   // TODO: დადასტურების ფრეიმი
+$('#bOk').onclick = async () => {
+  const {s, e, conflict} = times(); if (conflict) return;
+  try { await API.create({title: $('#fTitle').value.trim() || 'შეხვედრა', start: s, end: e, author: MeeTabAuth.name() || 'Default ავტორი',
+    kind: 'Room Meeting', urgent: B.status === 'urgent', guests: B.guests}); }
+  catch (err) { console.error(err); return modal('ვერ დაიჯავშნა.<br>სცადეთ თავიდან.', [['გასაგებია']], 117, 186, 295); }
+  const mins = Math.round((e - s) / MIN);
+  await load(); resetForm(); go('home');
+  modal(`ოთახი დაიჯავშნა თქვენ მიერ<br>${mins} წუთით!`, [['გასაგებია']], 117, 186, 295);
+};
+
+let swapT;
+function showPage(p) {   // ძველი გვერდი ქრება (zoom), ახალი ჩნდება (zoom), სახელი და ლოგო კი მოძრაობს
+  clearTimeout(swapT); $$('.page').forEach(x => x.classList.remove('out'));
+  const cur = $('.page.on'), nxt = $('#p-' + p); if (cur === nxt) return;
+  const swap = () => $$('.page').forEach(x => x.classList.toggle('on', x === nxt));
+  if (!cur) return swap();
+  cur.classList.add('out'); swapT = setTimeout(() => { cur.classList.remove('out'); swap(); }, 200);
+}
+function layoutHdr() {   // სათაურის სიგანე -> გამყოფისა და ლოგოს პოზიცია (ნებისმიერი ოთახის სახელისთვის)
+  const m = document.createElement('span');
+  m.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:700 32px var(--font)';
+  m.textContent = ROOM.name; $('#frame').appendChild(m); const w = m.offsetWidth; m.remove();
+  const f = $('#frame').style; f.setProperty('--dx', (85 + w + 16) + 'px'); f.setProperty('--lx', (85 + w + 33) + 'px');
+}
+function navPos() { $('#nav').classList.toggle('ctr', page !== 'home' && !$('#side').classList.contains('open')); }
+/* ===== ნავბარის ინდიკატორი ===== */
+let indInit = false;
+function moveInd(instant) {   // instant = გადაადგილება ანიმაციის გარეშე (დაწყებისას/ჩატვირთვისას)
+  const b = $('#nav button.on'), i = $('#ind'); if (!b || !b.offsetWidth) return;
+  const snap = instant || !indInit;
+  if (snap) i.style.transition = 'none';
+  i.style.left = b.offsetLeft + 'px'; i.style.width = b.offsetWidth + 'px';
+  if (snap) { i.offsetWidth; i.style.transition = ''; indInit = true; }
+}
+
+/* ===== ამინდი (Open-Meteo, API გასაღები არ სჭირდება) ===== */
+const WX = {lat: 41.7151, lon: 44.8271, city: 'თბილისი'};
+const WI = n => `<img src="assets/icons/weather-${n}.svg" alt="">`;
+const WICONS = {clear: WI('sunny'), partly: WI('sunny'), cloudy: WI('windy'), windy: WI('windy'), fog: WI('windy'), rain: WI('rainy'), storm: WI('rainy'), snow: WI('snowy')};
+const WSPEC = {65:'ძლიერი წვიმა', 82:'ძლიერი წვიმა', 75:'ძლიერი თოვლი', 86:'ძლიერი თოვლი'};
+const WTXT = {clear:'მზიანი', partly:'ნაწილობრივ მოღრუბლული', cloudy:'მოღრუბლული', fog:'ნისლი', rain:'წვიმა', snow:'თოვლი', windy:'ქარიანი', storm:'ჭექა-ქუხილი'};
+// WMO კოდები -> კატეგორია; ქარი >= 30 კმ/სთ -> 'windy'
+const wcat0 = c => c === 0 ? 'clear' : c <= 2 ? 'partly' : c === 3 ? 'cloudy' : c <= 48 ? 'fog' : c <= 67 ? 'rain' : c <= 77 ? 'snow' : c <= 82 ? 'rain' : c <= 86 ? 'snow' : 'storm';
+const wcat = (c, w) => { const k = wcat0(c); return w >= 30 && ['clear', 'partly', 'cloudy'].includes(k) ? 'windy' : k; };
+let WXD = null, wxMode = 'days';
+const renderFc = () => { if (WXD) $('#fc').innerHTML = wxMode === 'today' ? WXD.hours : WXD.days; };
+function toggleWx() {
+  const btn = $('#wTog'), fc = $('#fc'); if (!WXD) return;
+  wxMode = wxMode === 'days' ? 'today' : 'days';
+  btn.animate([{transform: 'translateY(0) scale(1)'}, {transform: 'translateY(4px) scale(.93)'}, {transform: 'translateY(0) scale(1)'}], {duration: 340, easing: 'cubic-bezier(.3,1.5,.5,1)'});
+  const out = fc.animate([{opacity: 1, transform: 'translateY(0)'}, {opacity: 0, transform: 'translateY(10px)'}], {duration: 150, easing: 'ease-in', fill: 'forwards'});
+  out.finished.then(() => {
+    btn.textContent = wxMode === 'today' ? '7 დღის' : 'დღევანდელი';
+    renderFc(); fc.scrollLeft = 0;
+    $$('#fc .fd').forEach((el, i) => { el.style.animationDelay = i * 35 + 'ms'; el.classList.add('in'); });
+    out.cancel();
+  });
+}
+$('#wTog').onclick = toggleWx;
+async function loadWeather() {
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${WX.lat}&longitude=${WX.lon}&current=temperature_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,precipitation_probability_max&hourly=temperature_2m,weather_code,wind_speed_10m&timezone=${encodeURIComponent(CONFIG.tz)}&forecast_days=8`);
+    const j = await r.json(), cu = j.current, c = wcat(cu.weather_code, cu.wind_speed_10m);
+    $('#wIcon').innerHTML = WICONS[c];
+    $('#wTemp').textContent = Math.round(cu.temperature_2m) + '° C';
+    $('#wCond').textContent = WSPEC[cu.weather_code] || WTXT[c];
+    $('#wWind').textContent = Math.round(cu.wind_speed_10m) + 'კმ/სთ';
+    $('#wRain').textContent = (j.daily.precipitation_probability_max[0] ?? 0) + '%';
+    $('#wTime').textContent = cu.time.slice(11, 16);
+    const card = (lab, ic, t) => `<div class="fd"><span>${lab}</span><span class="wi">${ic}</span><b>${Math.round(t)}°</b></div>`;
+    const days = card('ახლა', WICONS[c], cu.temperature_2m) + j.daily.time.slice(1).map((d, i) => {
+      const day = GE_SHORT[new Date(d + 'T12:00:00Z').getUTCDay()];
+      return card(day, WICONS[wcat(j.daily.weather_code[i + 1], j.daily.wind_speed_10m_max[i + 1])], j.daily.temperature_2m_max[i + 1]);
+    }).join('');
+    const today = j.daily.time[0], h0 = +cu.time.slice(11, 13);   // დღევანდელი: მიმდინარე საათიდან 23:00-მდე
+    const hours = j.hourly.time.map((t, i) => [t, i]).filter(([t]) => t.startsWith(today) && +t.slice(11, 13) >= h0)
+      .map(([t, i], k) => card(k === 0 ? 'ახლა' : t.slice(11, 16), WICONS[wcat(j.hourly.weather_code[i], j.hourly.wind_speed_10m[i])], k === 0 ? cu.temperature_2m : j.hourly.temperature_2m[i])).join('');
+    WXD = {days, hours}; renderFc();
+  } catch (e) { console.error('weather', e); }
+}
+
+/* ===== შეხვედრის დეტალები ===== */
+function showDetails(e) {
+  const st = e.end <= Date.now() ? 'დასრულდა' : e.start <= Date.now() ? 'მიმდინარეობს' : 'დაგეგმილია';
+  const rows = [['სახელი', e.title], ['ავტორი', e.author], ['დრო', `${fmtHM(e.start)} - ${fmtHM(e.end)} (${Math.round((e.end - e.start) / MIN)} წთ)`],
+    ['ტიპი', e.kind || 'Room Meeting'], ['სტატუსი', st + (e.urgent ? ' · ურგენტული' : '')]];
+  if (e.guests) rows.push(['სტუმრები', e.guests]);
+  const html = '<div class="st-t">შეხვედრის დეტალები</div>' + rows.map(([l, v], i) => `<div class="dt-r" style="top:${64 + i * 32}px"><span class="dt-l">${l}</span><span class="dt-v">${esc(v)}</span></div>`).join('');
+  const bt = 64 + rows.length * 32 + 24, h = bt + 34 + 38;
+  modal(html, [['გასაგებია']], h / 2, bt, h, 1, 'set');
+}
+$('#grid').onclick = ev => { const b = ev.target.closest('.det'); if (b && events[+b.dataset.i]) showDetails(events[+b.dataset.i]); };
+
+/* ===== ფანჯრები (მოდალები) ===== */
+async function modal(html, btns, tc, bt, h, depth = 1, cls = '') {   // tc = ტექსტის ცენტრი, bt = ღილაკების top, h = სიმაღლე (ფიგმადან)
+  const ov = $('#ov'), md = $('#md');
+  if (ov.classList.contains('on')) {   // ახალი ფანჯარა წინას ცვლის: ძველი ქრება, ფონი მუქდება
+    const out = md.animate([{transform: 'scale(1)', opacity: 1}, {transform: 'scale(.92)', opacity: 0}], {duration: 150, easing: 'ease-in', fill: 'forwards'});
+    await out.finished; md.style.opacity = '0'; out.cancel();
+  }
+  md.style.height = h + 'px'; md.className = cls; $('.mtxt').style.height = tc * 2 + 'px'; $('.mtxt').innerHTML = html;
+  const bb = $('.mbtns'); bb.style.top = bt + 'px'; bb.innerHTML = '';
+  btns.forEach(([label, fn]) => {
+    const b = document.createElement('button'); b.className = 'mb'; b.textContent = label;
+    b.onclick = () => { bb.querySelectorAll('button').forEach(x => x.disabled = true); if (fn) fn(); else ov.classList.remove('on', 'd2'); };
+    bb.appendChild(b);
+  });
+  ov.classList.toggle('d2', depth > 1); ov.classList.add('on');
+  md.animate([{transform: 'scale(.86) translateY(24px)', opacity: 0}, {transform: 'scale(1) translateY(0)', opacity: 1}], {duration: 380, easing: 'cubic-bezier(.2,.9,.3,1.15)'});
+  md.style.opacity = '';
+}
+async function sendIT() {
+  try { await API.requestIT(); modal('თქვენი მოთხოვნა დაფიქსირებულია!<br>დაელოდეთ IT მხარდაჭერის ჩართვას.', [['გასაგებია']], 117, 186, 301, 2); }
+  catch (e) { console.error(e); modal('მოთხოვნა ვერ გაიგზავნა.<br>სცადეთ თავიდან.', [['გასაგებია']], 117, 186, 301, 2); }
+}
+$('#bIT').onclick = () => modal('ნამდვილად გსურთ IT მოთხოვნის დაფიქსირება?', [['დიახ', sendIT], ['არა']], 103, 181, 282);
+
+/* ===== პარამეტრები: ხმა + ღამის რეჟიმი ===== */
+const store = {get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }};
+const SET = {vol: store.get('vol') === null ? .5 : +store.get('vol'), night: store.get('night') === '1'};
+let actx;
+function beep(v = SET.vol) {   // შეხების ხმა (გენერირდება კოდით, ფაილი არ სჭირდება)
+  if (v <= 0.01) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
+    const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(1000, t); o.frequency.exponentialRampToValueAtTime(520, t + .07);
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(.0002, v * v * .5), t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + .1);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + .12);
+  } catch (e) {}
+}
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#vol')) beep(); });
+function setNight(on) { SET.night = on; document.body.classList.toggle('night', on); store.set('night', on ? '1' : '0'); }
+const SET_HTML = `<div class="st-t">პარამეტრები</div>
+<div class="st-r" style="top:58px"><span class="st-l" style="width:126px">ხმის კონტროლი</span><div class="vc"><img id="vMute" src="assets/icons/volume-mute.svg" width="29" height="29" alt=""><div id="vol"><i class="vl"></i><i class="vk"></i></div><img id="vFull" src="assets/icons/volume-full.svg" width="28" height="28" alt=""></div></div>
+<div class="st-r" style="top:100px;gap:28px;height:34px"><span class="st-l" style="width:157px">დღის / ღამის რეჟიმი</span><div class="nr"><button id="nBtn"><img src="assets/icons/daynight.svg" alt=""></button><span>(დააჭირეთ შესაცვლელად)</span></div></div>`;
+async function openSettings() {
+  await modal(SET_HTML, [['დახურვა']], 144.5, 195, 289, 1, 'set');
+  const vol = $('#vol'), knob = vol.querySelector('.vk');
+  const paint = () => { knob.style.left = SET.vol * 173 + 'px'; };
+  const setVol = v => { SET.vol = Math.min(1, Math.max(0, v)); store.set('vol', SET.vol); paint(); };
+  const fromEv = ev => { const r = vol.getBoundingClientRect(), k = r.width / 187; setVol((ev.clientX - r.left - 7 * k) / (173 * k)); };
+  const pop = el => el.animate([{transform: 'scale(1)'}, {transform: 'scale(1.35)'}, {transform: 'scale(1)'}], {duration: 280, easing: 'cubic-bezier(.3,1.6,.5,1)'});
+  paint();
+  vol.onpointerdown = ev => { vol.setPointerCapture(ev.pointerId); vol.classList.add('drag'); fromEv(ev); };
+  vol.onpointermove = ev => { if (vol.classList.contains('drag')) fromEv(ev); };
+  vol.onpointerup = vol.onpointercancel = () => { vol.classList.remove('drag'); beep(); };
+  $('#vMute').onclick = () => { setVol(0); pop($('#vMute')); };
+  $('#vFull').onclick = () => { setVol(1); pop($('#vFull')); beep(); };
+  $('#nBtn').onclick = () => { setNight(!SET.night); $('#nBtn img').animate([{transform: 'rotate(0)'}, {transform: 'rotate(360deg) scale(1.25)'}, {transform: 'rotate(360deg) scale(1)'}], {duration: 520, easing: 'ease-in-out'}); };
+}
+$('#bGear').onclick = $('#bSet').onclick = openSettings;
+
+/* ===== მასშტაბირება + გაშვება ===== */
+const stage = $('#stage');
+function fit() {
+  const s = Math.min(innerWidth / 1280, innerHeight / 800), W = innerWidth / s;
+  stage.style.width = W + 'px'; stage.style.height = innerHeight / s + 'px'; stage.style.transform = `scale(${s})`;
+  stage.classList.toggle('narrow', W < 1670);   // ვიწრო ეკრანზე QR მარჯვენა პანელთან, ხაზის ქვემოთ დგება
+  stage.style.setProperty('--tw', (W - 843 - (W - 1280) / 2) + 'px');
+}
+addEventListener('resize', fit); fit();
+$('#burger').style.display = 'none';
+setInterval(tick, 1000); setInterval(load, CONFIG.refreshSec * 1000);
+setNight(SET.night);
+document.documentElement.style.setProperty('--coral', ROOM.color); document.title = ROOM.name;
+$$('.rname').forEach(x => x.textContent = ROOM.name);
+layoutHdr(); if (document.fonts) document.fonts.ready.then(layoutHdr);
+window.MeeTabAuthUpdated = () => { load(); if (page === 'book') renderBook(); };
+MeeTabAuth.init().catch(e => console.error('Profile:',e));
+load(); go('home'); loadWeather(); setInterval(loadWeather, 15 * 60000);
+// ინდიკატორის ხელახალი სინქრონი: ჩატვირთვის, ფონტების და ზომის შეცვლის შემდეგ
+addEventListener('load', () => moveInd(true)); addEventListener('resize', () => moveInd(true));
+if (document.fonts) document.fonts.ready.then(() => moveInd(true));
+setTimeout(() => moveInd(true), 400);
+</script>
+</body></html>

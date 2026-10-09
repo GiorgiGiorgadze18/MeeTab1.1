@@ -1,0 +1,12 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'ge.evex.meetab'
+    compileSdk 35
+    defaultConfig { applicationId 'ge.evex.meetab'; minSdk 23; targetSdk 32; versionCode 2; versionName '1.1.0' }
+    buildTypes { release { minifyEnabled false } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies { implementation 'androidx.webkit:webkit:1.12.1' }
+// Place the latest website into assets/www. Copy the website files before packaging.
+tasks.register('copyMeeTabWeb', Copy) { from('../../website'); into('src/main/assets/www'); exclude 'MeeTab.json', 'Main Page.png', 'Calendar Page.png', 'Book a Meeting Page.png', 'Navbar.png', 'Weather-Overlay.png' }
+tasks.named('preBuild').configure { dependsOn(tasks.named('copyMeeTabWeb')) }

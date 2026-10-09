@@ -40,9 +40,8 @@ const encrypt = plain => { const iv=crypto.randomBytes(12), c=crypto.createCiphe
 const decrypt = encoded => { const b=Buffer.from(encoded,'base64'), d=crypto.createDecipheriv('aes-256-gcm',key,b.subarray(0,12));d.setAuthTag(b.subarray(12,28));return Buffer.concat([d.update(b.subarray(28)),d.final()]).toString(); };
 let db = {accounts:{},sessions:{}};
 try { db=JSON.parse(decrypt(fs.readFileSync(DATA_FILE,'utf8'))); } catch (e) { if (fs.existsSync(DATA_FILE)) throw e; }
-// Per-room IT recipients are kept in the existing encrypted session data file.
-// Render must mount a durable disk for persistence across restarts.
-if(!db.itRecipients||typeof db.itRecipients!=='object'||Array.isArray(db.itRecipients))db.itRecipients=Object.create(null);
+// IT settings live in Render PostgreSQL rather than the ephemeral Free web-service disk.
+const itStore=process.env.DATABASE_URL?require('./it-store')(process.env.DATABASE_URL):null;
 function save() {const filename=DATA_FILE+'.tmp';fs.writeFileSync(filename,encrypt(JSON.stringify(db)),{mode:0o600}); fs.renameSync(filename,DATA_FILE);}
 const pending=new Map(),tickets=new Map(),locks=new Set();
 // Server-owned IT recipient and webhook; never trust public frontend input for routing.
@@ -52,7 +51,7 @@ const IT_WEBHOOK_TOKEN=process.env.IT_WEBHOOK_TOKEN||''; // Optional private Bea
 // Admin changes require BOTH a signed-in allowlisted identity and a private secret.
 // Admin secret must never be put in public HTML or localStorage.
 const IT_ADMIN_TOKEN=process.env.IT_ADMIN_TOKEN||'';
-const IT_CONFIG_STORAGE_DURABLE=process.env.IT_CONFIG_STORAGE_DURABLE==='true';
+// DATABASE_URL presence enables the PostgreSQL-backed editor; no local-file fallback.
 let IT_ADMIN_IDENTITIES=new Set();
 if(process.env.IT_ADMIN_IDENTITIES_JSON){
   try {
@@ -62,11 +61,11 @@ if(process.env.IT_ADMIN_IDENTITIES_JSON){
   }catch {console.error('Invalid IT_ADMIN_IDENTITIES_JSON');process.exit(1);}
 }
 if(IT_ADMIN_TOKEN&&IT_ADMIN_TOKEN.length<24){console.error('IT_ADMIN_TOKEN must be at least 24 characters');process.exit(1);}
-const itConfigAdminsReady=Boolean(IT_ADMIN_TOKEN&&IT_ADMIN_IDENTITIES.size&&IT_CONFIG_STORAGE_DURABLE);
+const itConfigAdminsReady=Boolean(IT_ADMIN_TOKEN&&IT_ADMIN_IDENTITIES.size&&itStore);
 const validItEmail=value=>typeof value==='string'&&value.length<=254&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
 const validItRoom=roomId=>typeof roomId==='string'&&Object.hasOwn(IT_ROOMS,roomId)&&typeof IT_ROOMS[roomId]==='string';
-const savedItRecipient=roomId=>Object.hasOwn(db.itRecipients,roomId)&&validItEmail(db.itRecipients[roomId])?db.itRecipients[roomId]:null;
-const configuredItRecipient=roomId=>savedItRecipient(roomId)||(IT_ROOM_RECIPIENTS?IT_ROOM_RECIPIENTS[roomId]:IT_SUPPORT_EMAIL)||null;
+const savedItRecipient=async roomId=>itStore?await itStore.get(roomId):null;
+const configuredItRecipient=async roomId=>(await savedItRecipient(roomId))||(IT_ROOM_RECIPIENTS?IT_ROOM_RECIPIENTS[roomId]:IT_SUPPORT_EMAIL)||null;
 const isItConfigAdmin=account=>IT_ADMIN_IDENTITIES.has(account.provider+':'+String(account.email||'').trim().toLowerCase());
 const correctAdminToken=input=>{
   if(typeof input!=='string'||!IT_ADMIN_TOKEN||input.length>1024)return false;
@@ -302,24 +301,20 @@ async function handler(req,res){
       const roomId=url.searchParams.get('roomId');
       if(!validItRoom(roomId))return send(res,400,{error:'Unknown room'},origin);
       requireRoomAccess(account,'itRooms',roomId);
-      return send(res,200,{roomId,recipient:configuredItRecipient(roomId),canEdit:itConfigAdminsReady&&isItConfigAdmin(account)},origin);
+      return send(res,200,{roomId,recipient:await configuredItRecipient(roomId),canEdit:itConfigAdminsReady&&isItConfigAdmin(account)},origin);
     }
     if(url.pathname==='/api/it-config'&&req.method==='POST'){
       if(rateLimit(req,res,origin,'it-admin-save',hash,5,10*60000))return;
-      if(!itConfigAdminsReady)return send(res,503,{error:'Admin configuration or durable storage unavailable'},origin);
+      if(!itConfigAdminsReady)return send(res,503,{error:'Admin configuration or database unavailable'},origin);
       if(!isItConfigAdmin(account))return send(res,403,{error:'Admin account required'},origin);
       if(!correctAdminToken(req.headers['x-meetab-admin-code']))return send(res,403,{error:'Invalid administrator code'},origin);
       const body=await parseJSON(req);
       if(!validItRoom(body?.roomId))return send(res,400,{error:'Unknown room'},origin);
       requireRoomAccess(account,'itRooms',body.roomId);
       if(!validItEmail(body?.recipient))return send(res,400,{error:'Invalid IT email address'},origin);
-      const email=body.recipient.toLowerCase(),old=savedItRecipient(body.roomId);
-      db.itRecipients[body.roomId]=email;
-      try{save();}catch(e){
-        if(old)db.itRecipients[body.roomId]=old;else delete db.itRecipients[body.roomId];
-        console.error('Unable to persist IT recipient:',e.message);
-        return send(res,503,{error:'Unable to save recipient'},origin);
-      }
+      const email=body.recipient.toLowerCase();
+      try { await itStore.set(body.roomId,email); }
+      catch(e){console.error('IT recipient database write failed:',e.message);return send(res,503,{error:'Unable to save recipient'},origin);}
       return send(res,200,{roomId:body.roomId,recipient:email,saved:true},origin);
     }
     if(url.pathname==='/api/it-request'&&req.method==='POST'){
@@ -327,7 +322,7 @@ async function handler(req,res){
       let b;try{b=await parseJSON(req);}catch{return send(res,400,{error:'Invalid request body'},origin);}
       if(!validItRoom(b?.roomId))return send(res,400,{error:'Unknown room'},origin);
       requireRoomAccess(account,'itRooms',b.roomId);
-      const recipient=configuredItRecipient(b.roomId);
+      const recipient=await configuredItRecipient(b.roomId);
       if(!recipient)return send(res,503,{error:'Room IT recipient not configured'},origin);
       const key=hash+':'+b.roomId,now=Date.now();
       if((itThrottle.get(key)||0)>now)return send(res,429,{error:'Please wait before submitting again'},origin);

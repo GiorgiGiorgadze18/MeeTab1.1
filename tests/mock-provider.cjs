@@ -1,3 +1,18 @@
+// Isolated fake pg module for the backend test process: never connects to Render.
+const Module=require('node:module');
+const load=Module._load;
+const fakeTable=new Map();
+Module._load=function(request,parent,isMain){
+  if(request==='pg')return {Pool:class {
+    async query(sql,params=[]){
+      if(sql.startsWith('CREATE TABLE'))return {rows:[]};
+      if(sql.startsWith('SELECT recipient'))return {rows:fakeTable.has(params[0])?[{recipient:fakeTable.get(params[0])}]:[]};
+      if(sql.startsWith('INSERT INTO')){fakeTable.set(params[0],params[1]);return {rows:[]}}
+      throw Error('Unexpected mock SQL');
+    }
+  }};
+  return load.apply(this,arguments);
+};
 // Local-only fake provider responses. Never used in production.
 const nativeFetch=global.fetch;
 global.fetch=async (url, opts={})=>{

@@ -33,3 +33,11 @@ _Last reviewed: 2026-10-09. Keep updated after every infrastructure or product c
 
 ## Operating rules
 Work in feature branches, test locally and in CI, open a PR; **no direct main/production merge/deploy without user authorization**. Database costs require prior approval. Record new subscription charges and architectural decisions here.
+
+## Deployment checkpoint — 2026-10-09
+- Owner reports setting `DATABASE_URL` in Render MeeTab1.1 web service environment. **Secret value/presence cannot be independently read by available Render tools**; don't paste database connection URL into chat or GitHub.
+- Render service `MeeTab1.1` live, latest deployment `dep-db4f6c3tqb8s73f2q800` on `main` commit `b2b859e29b290aed4fda90f52761ba05493b8eab`, finished 13:59:40 UTC. PR #4 PostgreSQL code is **not deployed**.
+- Render PostgreSQL `dpg-db4eduad0e5s73enh400-a` available, free, expiry 2026-11-08 13:07 UTC, external allowlist empty (retain). Hosted connector cannot query it externally.
+- GitHub PR #4 (Draft) backend CI, PostgreSQL 18 integration test, Trivy, Android debug build all passed on `027971c...`; real Render DB connection and email persistence **not yet verified**.
+- One backend request after the redeploy returned “Login required”; likely expired authentication after restart. User may need to sign back in. Do not assume this was a DB error.
+- **Next gate:** review configuration for admin identities/secret and tenant access, verify `DATABASE_URL` internally on staging, then obtain explicit approval before merging (Render auto-deploys `main`). Never log secrets or edit current main without approval.

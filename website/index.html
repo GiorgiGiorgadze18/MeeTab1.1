@@ -32,11 +32,10 @@ background:#FBFBFB}
 .badge.free{background:var(--teal);color:#fff;border-color:var(--teal)}
 /* side panel */
 #side{position:absolute;right:0;top:0;height:100%;width:71px;background:var(--coral);border-radius:32px 0 0 32px;box-shadow:-10px 0 30px rgba(0,0,0,.28);transition:width .3s ease;overflow:hidden;color:#fff;z-index:5}
-#side.full,#side.open,#side.weather{width:407px}
+#side.full,#side.open{width:407px}
 #side>.in{position:absolute;right:0;top:0;width:407px;height:100%;display:none}
-#side.full>.f,#side.open>.p,#side.weather>.p{display:block}
+#side.full>.f,#side.open>.p{display:block}
 #side.full.open>.p{display:none}
-#side.weather>.f{display:none}
 .sbtn{position:absolute;right:20px;top:20px;width:34px;height:34px;display:grid;place-items:center}
 #clock,#clock2{left:0;right:0;top:70px;text-align:center;font-size:92px;font-weight:300;line-height:1.1}
 #sdate,#sdate2{left:0;right:0;top:182px;text-align:center;font-size:24px}
@@ -85,15 +84,15 @@ background:#FBFBFB}
 .det{top:113px;height:28px;padding:0 20px 0 14px;border-radius:10px;background:var(--ink);color:#fff;font-size:14px;display:flex;align-items:center;gap:10px}
 .det:before{content:"";width:7px;height:7px;border-radius:50%;background:#fff}
 #nav.ctr{transform:translateX(203px)}
-/* Keep the original 407px weather panel visible on calendar and booking pages. */
-#p-cal #grid{width:750px;grid-template-columns:repeat(2,312px);column-gap:47px;row-gap:24px;padding:8px;left:85px;top:138px;height:520px}
-#p-book .inp{width:395px}
-#p-book .rule{width:730px!important}
-#p-book #bOk{left:650px}
-#p-book #warn{left:415px;max-width:390px}
-#p-book #fSlots{max-width:400px;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
-#p-book #fSlots button{flex-shrink:0}
-#p-book #bDate,#p-book #bClock{display:none} /* Date/time shown in the weather panel */
+/* Reflow Calendar/Booking only while the weather panel is expanded. */
+#stage.weather-open #p-cal #grid{width:750px;grid-template-columns:repeat(2,312px);column-gap:47px;row-gap:24px;padding:8px;left:85px;top:138px;height:520px}
+#stage.weather-open #p-book .inp{width:395px}
+#stage.weather-open #p-book .rule{width:730px!important}
+#stage.weather-open #p-book #bOk{left:650px}
+#stage.weather-open #p-book #warn{left:415px;max-width:390px}
+#stage.weather-open #p-book #fSlots{max-width:400px;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
+#stage.weather-open #p-book #fSlots button{flex-shrink:0}
+#stage.weather-open #p-book #bDate,#stage.weather-open #p-book #bClock{display:none} /* Weather panel shows date/time when expanded */
 #weatherClock{top:91px;left:0;right:0;text-align:center;font-size:17px;font-weight:400}
 /* settings */
 #md.set .mtxt{display:block;left:0;right:0}
@@ -159,7 +158,8 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
 .qc{width:100%;height:100%;box-sizing:border-box;border-radius:20px;background:rgba(255,255,255,.92);border:1px solid #fff;box-shadow:0 8px 28px rgba(60,60,100,.14);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#303030;padding:10px}
 .qc b{font-size:17px;font-weight:700;line-height:20px}.qc span{font-size:13px;line-height:16px;opacity:.7}.qc img{width:184px;height:184px;margin-top:4px;display:block}
 /* Keep the tablet QR high above the meeting heading (y=424), not below it. */
-#stage.narrow #qr{top:150px;right:408px;width:112px;height:130px}
+#stage.narrow #qr{top:38px;right:430px;width:112px;height:130px;transform:scale(.76);transform-origin:top right}
+#stage.narrow #qr.gone{opacity:0;transform:scale(.69)}
 #stage.narrow .qc{padding:5px;gap:2px;border-radius:12px}
 #stage.narrow .qc b{font-size:10px;line-height:13px;white-space:nowrap}
 #stage.narrow .qc span{font-size:9px;line-height:11px}
@@ -245,7 +245,7 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
   <div class="a lab mid" style="top:205px">სტატუსი:</div>
   <div class="a seg mid" id="fStatus" style="left:415px;top:205px"><button class="on" data-v="normal">ნორმალური</button><button data-v="urgent">ურგენტული</button></div>
   <div class="a lab mid" style="top:266px">ავტორი:</div>
-  <div class="a inp dis mid" id="bookAuthor" style="top:266px">საჭიროა შესვლა</div>
+  <div class="a inp dis mid" id="bookAuthor" style="top:266px">ოთახი</div>
   <div class="a lab mid" style="top:327px">სტუმრები:</div>
   <button class="a rb mid" id="gMinus" style="left:405px;top:327px"><img alt=""></button>
   <div class="a big mid" id="gNum" style="left:460px;top:327px;width:50px;text-align:center">1</div>
@@ -488,6 +488,7 @@ function renderSlots(show) {
 }
 function renderBook() {
   const {s, e, conflict, nowBusy} = times();
+  $('#bookAuthor').textContent = ROOM.name;
   $('#tFrom').textContent = fmtHM(s); $('#tTo').textContent = fmtHM(e);
   $('#bDate').textContent = fmtDate(new Date()); $('#bClock').textContent = fmtHM(new Date());
   $('#gNum').textContent = B.guests;
@@ -523,13 +524,18 @@ function go(p) {
   showPage(p); $('#frame').classList.toggle('hd', p !== 'home'); $('#qr').classList.toggle('gone', p !== 'home');
   $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.go === p));
   const side = $('#side'); side.classList.remove('open'); $('#burger').classList.remove('x');
-  side.classList.toggle('full', p === 'home'); side.classList.toggle('weather', p !== 'home');
-  $('#burger').style.display = 'none';
+  $('#burger').setAttribute('aria-expanded', 'false');
+  side.classList.toggle('full', p === 'home'); $('#stage').classList.remove('weather-open');
+  $('#burger').style.display = p === 'home' ? 'none' : '';
   moveInd(); navPos();
   tick();
 }
 $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.go));
-function setOpen(v) { $('#side').classList.toggle('open', v); $('#burger').classList.toggle('x', v); navPos(); }
+function setOpen(v) {
+  if (page === 'home') return;
+  $('#side').classList.toggle('open', v); $('#stage').classList.toggle('weather-open', v);
+  $('#burger').classList.toggle('x', v); $('#burger').setAttribute('aria-expanded', String(v)); navPos();
+}
 $('#burger').onclick = () => setOpen(!$('#side').classList.contains('open'));
 document.addEventListener('pointerdown', e => { if ($('#side').classList.contains('open') && !e.target.closest('#side, #ov')) setOpen(false); });
 
@@ -554,7 +560,7 @@ function resetForm() {
 $('#bCancel').onclick = () => { resetForm(); go('home'); };   // TODO: დადასტურების ფრეიმი
 $('#bOk').onclick = async () => {
   const {s, e, conflict} = times(); if (conflict) return;
-  try { await API.create({title: $('#fTitle').value.trim() || 'შეხვედრა', start: s, end: e, author: MeeTabAuth.name() || 'Default ავტორი',
+  try { await API.create({title: $('#fTitle').value.trim() || 'შეხვედრა', start: s, end: e, author: ROOM.name,
     kind: 'Room Meeting', urgent: B.status === 'urgent', guests: B.guests}); }
   catch (err) { console.error(err); return modal('ვერ დაიჯავშნა.<br>სცადეთ თავიდან.', [['გასაგებია']], 117, 186, 295); }
   const mins = Math.round((e - s) / MIN);
@@ -576,7 +582,7 @@ function layoutHdr() {   // სათაურის სიგანე -> გ�
   m.textContent = ROOM.name; $('#frame').appendChild(m); const w = m.offsetWidth; m.remove();
   const f = $('#frame').style; f.setProperty('--dx', (85 + w + 16) + 'px'); f.setProperty('--lx', (85 + w + 33) + 'px');
 }
-function navPos() { $('#nav').classList.remove('ctr'); }
+function navPos() { $('#nav').classList.toggle('ctr', page !== 'home' && !$('#side').classList.contains('open')); }
 /* ===== ნავბარის ინდიკატორი ===== */
 let indInit = false;
 function moveInd(instant) {   // instant = გადაადგილება ანიმაციის გარეშე (დაწყებისას/ჩატვირთვისას)

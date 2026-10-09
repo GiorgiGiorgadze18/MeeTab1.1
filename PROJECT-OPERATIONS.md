@@ -70,3 +70,10 @@ Work in feature branches, test locally and in CI, open a PR; **no direct main/pr
 - Final release blockers: combine reviewed PR #4 (IT config/admin/DB) and PR #5 (calendar sync) without losing UI edits; validate Google room bookings and IT recipient persistence on real Render; receive Microsoft/Outlook Infosec approval before enabling Outlook production workflows; configure and verify real IT email delivery; replace **hardcoded Android PIN `2580`** with secure admin control; create owner-controlled signing key and **signed release APK**; test Google OAuth return via Android external browser, QR, kiosk mode, tablet wake/reconnect, room configuration and safe app updates on a physical Android tablet.
 - Keep Chrome testing until integrations pass and final APK is validated. Updating GitHub Pages does not update a tablet that runs the bundled APK; distribute new signed builds with versioned release/update instructions.
 - Do not confuse a successful Android **debug CI build** with production readiness; no final signed APK has been delivered yet.
+
+## Combined Android preview — 2026-10-10
+- Candidate preview branch based on PR #4 with the independent Chrome/tablet synchronization fix from PR #5 applied without discarding the IT Help overlay.
+- Calendar refresh every 20 seconds while visible, immediate refresh after booking and on foreground/Android resume; failed network poll preserves last known schedule and warns.
+- Both PRs remain Draft and production `main` is untouched; integrated candidate requires dedicated CI and manual Android test.
+- **No release signing key has been provisioned** and Android still contains a prototype PIN; debug builds only until this is resolved.
+- Real Render `DATABASE_URL` connection and IT webhook have not been end-to-end verified. Outlook Infosec approval pending.

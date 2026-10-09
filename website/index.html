@@ -361,7 +361,7 @@ const CONFIG = {
   room: ROOM.email,                     // OUTLOOK: ოთახის mailbox
   itEmail: SITE.itSupportEmail, canFuture: true, itWebhook: '',            // IT მოთხოვნების მისამართი
   tz: SITE.timezone,
-  refreshSec: 60
+  refreshSec: 20
 };
 
 /* ===== მონაცემები (OUTLOOK ინტეგრაცია აქ) ===== */
@@ -530,7 +530,39 @@ function tick() {
   renderSide();
 }
 const rnd = d => new Date(Math.round(+d / MIN) * MIN);
-async function load() { try { events = (await API.list()).map(x => ({...x, start: rnd(x.start), end: rnd(x.end)})); } catch (e) { console.error('Calendar sync:',e); events=[]; toast('კალენდარი ვერ დასინქრონირდა — შეამოწმე პროფილი'); } renderCal(); tick(); }
+// Serialize polls so slow responses do not overlap. Forced updates invalidate the
+// old response (login/calendar switch) and re-fetch after it finishes.
+let calendarSyncGeneration = 0, calendarSyncInFlight = null, lastCalendarErrorNotice = 0;
+async function load(force = false) {
+  if (calendarSyncInFlight) {
+    if (force) {
+      ++calendarSyncGeneration;
+      await calendarSyncInFlight;
+      return load();
+    }
+    return calendarSyncInFlight;
+  }
+  const generation = ++calendarSyncGeneration;
+  const work = (async () => {
+    try {
+      const latest = (await API.list()).map(x => ({...x, start: rnd(x.start), end: rnd(x.end)}));
+      if (generation !== calendarSyncGeneration) return;
+      events = latest;
+      renderCal(); tick();
+    } catch (e) {
+      if (generation !== calendarSyncGeneration) return;
+      // A transient HTTP error must not erase the last successfully loaded
+      // schedule or show an inaccurate "room available" state.
+      console.error('Calendar sync:', e);
+      if (Date.now() - lastCalendarErrorNotice > 60000) {
+        lastCalendarErrorNotice = Date.now();
+        toast('კალენდარი დროებით ვერ განახლდა — ნაჩვენებია ბოლო მონაცემები');
+      }
+    }
+  })();
+  calendarSyncInFlight = work;
+  try { await work; } finally { if (calendarSyncInFlight === work) calendarSyncInFlight = null; }
+}
 
 /* ===== ნავიგაცია ===== */
 function go(p) {
@@ -596,7 +628,7 @@ $('#bOk').onclick = async () => {
     kind: 'Room Meeting', urgent: B.status === 'urgent', guests: B.guests}); }
   catch (err) { console.error(err); return modal('ვერ დაიჯავშნა.<br>სცადეთ თავიდან.', [['გასაგებია']], 117, 186, 295); }
   const mins = Math.round((e - s) / MIN);
-  await load(); resetForm(); go('home');
+  await load(true); resetForm(); go('home');
   modal(`ოთახი დაიჯავშნა თქვენ მიერ<br>${mins} წუთით!`, [['გასაგებია']], 117, 186, 295);
 };
 
@@ -762,7 +794,19 @@ function fit() {
 }
 addEventListener('resize', fit); fit();
 $('#burger').style.display = 'none';
-setInterval(tick, 1000); setInterval(load, CONFIG.refreshSec * 1000);
+// Refresh in the foreground and immediately after returning to the kiosk.
+let lastWakeRefresh = 0;
+function refreshOnWake() {
+  if (document.hidden || Date.now() - lastWakeRefresh < 3000) return;
+  lastWakeRefresh = Date.now();
+  void load(true);
+}
+window.MeeTabRefreshCalendar = refreshOnWake; // Called by Android WebView onResume.
+document.addEventListener('visibilitychange', refreshOnWake);
+window.addEventListener('focus', refreshOnWake);
+window.addEventListener('pageshow', refreshOnWake);
+setInterval(tick, 1000);
+setInterval(() => { if (!document.hidden) void load(); }, CONFIG.refreshSec * 1000);
 setNight(SET.night);
 document.documentElement.style.setProperty('--coral', ROOM.color);
 for (const [key, value] of Object.entries(SITE.colors || {})) if (['ink','teal','red','paper'].includes(key) && /^#[0-9a-fA-F]{6}$/.test(value)) document.documentElement.style.setProperty('--'+key, value);
@@ -772,7 +816,7 @@ $('#roomType').textContent = SITE.text.roomType;
 $('#roomEquipment').textContent = ROOM.equipment || SITE.text.defaultEquipment;
 $('#wifiName').textContent = SITE.text.wifiName;
 layoutHdr(); if (document.fonts) document.fonts.ready.then(layoutHdr);
-window.MeeTabAuthUpdated = () => { load(); if (page === 'book') renderBook(); };
+window.MeeTabAuthUpdated = () => { void load(true); if (page === 'book') renderBook(); };
 MeeTabAuth.init().catch(e => console.error('Profile:',e));
 load(); go('home'); loadWeather(); setInterval(loadWeather, 15 * 60000);
 // ინდიკატორის ხელახალი სინქრონი: ჩატვირთვის, ფონტების და ზომის შეცვლის შემდეგ

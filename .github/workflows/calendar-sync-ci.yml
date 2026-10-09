@@ -20,3 +20,5 @@ jobs:
           node-version: '22'
       - name: Test calendar polling and safe refresh
         run: node tests/calendar-sync.test.cjs
+      - name: Check Android kiosk admin onboarding controls
+        run: node tests/android-kiosk-security.cjs

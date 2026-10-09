@@ -77,3 +77,8 @@ Work in feature branches, test locally and in CI, open a PR; **no direct main/pr
 - Both PRs remain Draft and production `main` is untouched; integrated candidate requires dedicated CI and manual Android test.
 - **No release signing key has been provisioned** and Android still contains a prototype PIN; debug builds only until this is resolved.
 - Real Render `DATABASE_URL` connection and IT webhook have not been end-to-end verified. Outlook Infosec approval pending.
+
+## Preview kiosk admin security — 2026-10-10
+- Integrated PR #6 removes the shared hardcoded Android PIN. Owner enrolls a local 10+ character device passphrase on first launch; app uses random-salted PBKDF2 hash, lockout after five wrong attempts and an authenticated change-code action.
+- The tablet-local passphrase is **distinct** from private Render `IT_ADMIN_TOKEN` for IT recipient changes. Do not store either in the APK source.
+- Final release guide: `ANDROID-RELEASE-PLAN.md`. Debug CI build alone is not an owner-controlled signed release APK; physical tablet validation and secure signing remain blockers.

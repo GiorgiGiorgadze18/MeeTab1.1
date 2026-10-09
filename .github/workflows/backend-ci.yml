@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_USER: meetab_ci
           POSTGRES_PASSWORD: ci_test_only_password

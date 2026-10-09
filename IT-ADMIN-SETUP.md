@@ -13,7 +13,7 @@ Set these on a **staging service** first:
 - `IT_ROOM_LABELS_JSON` — room key → display name.
 - `IT_ADMIN_IDENTITIES_JSON` — JSON array of authorized provider identities, e.g. `["microsoft:it-admin@example.com"]`. Only these accounts see the edit option.
 - `IT_ADMIN_TOKEN` — a unique, randomly generated, unguessable secret **at least 24 characters long**. Share privately with authorized administrators; do not hardcode it or reuse the Android kiosk PIN. The frontend does not store this value.
-- `DATABASE_URL` — enable **only after confirming `DATA_FILE` lives on a Render persistent disk** (not ephemeral filesystem). This opt-in prevents pretending a saved email will survive a restart when no durable disk exists.
+- `DATABASE_URL` — Render PostgreSQL **internal connection URL**, configured privately on the backend service. The IT recipient is stored in PostgreSQL, not the ephemeral `DATA_FILE` (which still holds OAuth sessions pending migration). Never expose the connection URL in GitHub or the public website.
 - `IT_WEBHOOK_URL` — HTTPS endpoint of the approved Power Automate flow; `IT_WEBHOOK_TOKEN` optional only if that flow validates Bearer authorization.
 - `IT_ROOM_RECIPIENTS_JSON` — optional initial per-room recipient addresses. A successfully saved per-room value takes precedence. `IT_SUPPORT_EMAIL` remains the legacy fallback.
 
@@ -24,11 +24,11 @@ Create an HTTP-triggered cloud flow (licensing/permissions must support the trig
 
 ## Security, storage and deployment
 1. Stage the API and add the environment values without exposing their values in GitHub.
-2. Configure a Render PostgreSQL database **and confirm that saved records survive a web-service restart** before enabling durable mode.
+2. Configure the Render PostgreSQL internal database URL in a staging backend; confirm recipient records survive a web-service restart and re-read in a new process. No durable-mode flag is required.
 3. Test signed-in non-admin cannot edit, wrong code is rejected, incorrect email is rejected and the room recipient does not leak across tenants.
 4. Verify the configured recipient is actually used by an approved Power Automate flow, and that the email reached the expected IT inbox.
 5. Get owner approval before PR merge and production deployment; back up the existing encrypted DATA_FILE.
-6. A shared production deployment with multiple app instances requires a shared transactional database for configuration instead of a local file. Tenant isolation and booking locks remain separate rollout prerequisites.
+6. The IT recipient configuration uses a shared PostgreSQL table across processes. OAuth sessions and booking locks still need separate durable/shared-state improvements. Tenant isolation and booking locks remain separate rollout prerequisites.
 
 ## No false success
 The existing `itSupportEmail` in public `site-config.js` is presentation-only. If the secure backend is not deployed/configured, IT Help displays a connection/setup message and **does not claim a recipient was saved**.

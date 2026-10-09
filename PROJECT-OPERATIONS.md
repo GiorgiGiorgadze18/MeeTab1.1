@@ -5,7 +5,7 @@ _Last reviewed: 2026-10-09. Keep updated after every infrastructure or product c
 - **Frontend:** GitHub Pages, `website/` static app, 1280×800 Android tablet UI, Google/Microsoft room calendars through authenticated backend.
 - **API:** Render web service `MeeTab1.1`, `srv-db48vhflot8c73880as0`, region Oregon, **Free**, Node.js, `backend/`, GitHub `main` auto-deploy.
 - **Database (new):** Render PostgreSQL 18, `MeeTab1.1-Free-Postgres`, `dpg-db4eduad0e5s73enh400-a`, Oregon, Free. **Created 2026-10-09; expires 2026-11-08 at 13:07 UTC.** Do not automatically upgrade. Plan to export / upgrade before expiration.
-- **Room IT inboxes:** new PR #4 code to store in `meetab_it_recipients` via parameterized PostgreSQL queries; requires confidential `DATABASE_URL` on Render and approved staging/end-to-end validation.
+- **Room IT inboxes:** new PR #4 code to store in `meetab_it_recipients` via parameterized PostgreSQL queries; requires confidential `DATABASE_URL` on Render and approved staging/end-to-end validation. CI verifies PostgreSQL writes/reads across fresh pooled connections using an isolated PostgreSQL 18 service.
 - **Notifications:** Microsoft 365 Outlook / Power Automate planned, not configured or delivery-tested.
 - **Android:** Debug APK builds pass; production release signed APK and hardcoded admin PIN fix still pending.
 

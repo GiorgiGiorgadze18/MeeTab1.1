@@ -14,6 +14,7 @@ module.exports=function createITStore(connectionString){
     await setup;
   }
   return {
+    async close(){await pool.end()},
     async get(roomId){
       await ready();
       const result=await pool.query('SELECT recipient FROM meetab_it_recipients WHERE room_id=$1',[roomId]);

@@ -3,7 +3,7 @@
 // No OAuth credentials, secrets, booking writes, or DB mutations.
 const assert=require('node:assert/strict');
 const host='https://meetab-staging-20261010.onrender.com';
-const frontend='https://giorgigiorgadze18.github.io';
+const frontend=host;
 async function get(path, options={}){
   const url=host+path;
   let last;
@@ -46,5 +46,27 @@ async function get(path, options={}){
   assert.equal(r.headers.get('access-control-allow-origin'),null,'Do not allow attacker CORS');
   r=await get('/api/me',{headers:{Origin:frontend}});
   assert.equal(r.headers.get('access-control-allow-origin'),frontend,'Trusted frontend CORS');
+  // This is a separate Staging frontend, not the production GitHub Pages.
+  r=await get('/preview');
+  assert.equal(r.status,302);
+  assert.equal(r.headers.get('location'),'/preview/');
+  r=await get('/preview/');
+  assert.equal(r.status,200);
+  assert.match(await r.text(),/MeeTab/);
+  r=await get('/preview/app-config.js');
+  assert.equal(r.status,200);
+  const previewConfig=await r.text();
+  assert.match(previewConfig,/window\.MEETAB_API_BASE/);
+  assert(previewConfig.includes(host),'The preview must point to staging backend');
+  assert(!previewConfig.includes('meetab1-1.onrender.com'),'Must not point to production backend');
+  r=await get('/preview/auth-return.html');
+  assert.equal(r.status,200);
+  r=await get('/preview/server.js');
+  assert.equal(r.status,404,'Private backend source must not be public');
+  r=await get('/preview/.env');
+  assert.equal(r.status,404,'Private env must not be public');
+  r=await get('/preview/app-config.js',{method:'POST'});
+  assert.equal(r.status,405,'Preview must be read-only');
+  console.log('STAGING_PREVIEW_REMOTE=PASS');
   console.log('STAGING_HTTP_SMOKE=PASS');
 })().catch(e=>{console.error('STAGING_HTTP_SMOKE=FAIL',e.message);process.exitCode=1;});

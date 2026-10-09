@@ -82,3 +82,9 @@ Work in feature branches, test locally and in CI, open a PR; **no direct main/pr
 - Integrated PR #6 removes the shared hardcoded Android PIN. Owner enrolls a local 10+ character device passphrase on first launch; app uses random-salted PBKDF2 hash, lockout after five wrong attempts and an authenticated change-code action.
 - The tablet-local passphrase is **distinct** from private Render `IT_ADMIN_TOKEN` for IT recipient changes. Do not store either in the APK source.
 - Final release guide: `ANDROID-RELEASE-PLAN.md`. Debug CI build alone is not an owner-controlled signed release APK; physical tablet validation and secure signing remain blockers.
+
+## Staging web preview and Google OAuth preparation — 2026-10-10
+- Live staging UI at https://meetab-staging-20261010.onrender.com/preview/ and backend on same origin; GitHub preview branch only, feature-gated in production. Real remote CI verified preview routing/source-path rejection.
+- Staging Render configuration now permits the owner's verified Google identity as IT-only platform admin; `ROOM_ACCESS_JSON` starts with no calendar IDs until a **dedicated test calendar** is provided. OAuth client secrets are not provisioned.
+- Render refuses another free PostgreSQL in the current workspace (one Free DB limit). No staging DB connection set, existing DB not touched. Owner choice required before any shared-DB configuration or alternative external free DB account.
+- Setup guide `STAGING-GOOGLE-POSTGRES-SETUP.md`, with exact Google callback URL and instructions not to expose secrets.

@@ -1,0 +1,96 @@
+name: MeeTab Trivy security audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Read-only Trivy filesystem scan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out selected commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Scan vulnerabilities, configuration and secrets
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: 'v0.75.0'
+          scan-type: fs
+          scan-ref: .
+          scanners: 'vuln,misconfig,secret'
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+          format: json
+          output: trivy-raw.json
+          exit-code: '0' # Audit mode; findings do not fail the run
+          cache: 'false'
+
+      - name: Create sanitized report (never upload raw secrets)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import collections, json, os
+          from pathlib import Path
+
+          raw = json.loads(Path('trivy-raw.json').read_text())
+          counts = {k: collections.Counter() for k in ('vulnerabilities', 'misconfigurations', 'secrets')}
+          safe_findings = []
+          for result in raw.get('Results', []):
+              target = result.get('Target', '')
+              for vuln in result.get('Vulnerabilities') or []:
+                  severity = vuln.get('Severity', 'UNKNOWN')
+                  counts['vulnerabilities'][severity] += 1
+                  safe_findings.append({
+                      'type': 'vulnerability', 'target': target,
+                      'id': vuln.get('VulnerabilityID'),
+                      'package': vuln.get('PkgName'),
+                      'installed': vuln.get('InstalledVersion'),
+                      'fixed': vuln.get('FixedVersion'),
+                      'severity': severity,
+                  })
+              for mis in result.get('Misconfigurations') or []:
+                  severity = mis.get('Severity', 'UNKNOWN')
+                  counts['misconfigurations'][severity] += 1
+                  safe_findings.append({
+                      'type': 'misconfiguration', 'target': target,
+                      'id': mis.get('ID'), 'severity': severity,
+                      'title': mis.get('Title'),
+                  })
+              for secret in result.get('Secrets') or []:
+                  # Deliberately omit file paths, rule IDs, snippets and matched values.
+                  counts['secrets'][secret.get('Severity', 'UNKNOWN')] += 1
+
+          summary = {
+              'commit': os.environ['GITHUB_SHA'],
+              'scan_type': 'filesystem',
+              'scanners': ['vuln', 'misconfig', 'secret'],
+              'counts': {k: dict(v) for k, v in counts.items()},
+              'safe_findings': safe_findings,
+              'note': 'Secret details intentionally omitted. This is not a runtime penetration test.',
+          }
+          Path('trivy-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+          lines = ['# MeeTab Trivy scan', '', f"Commit: `{summary['commit']}`", '',
+                   '| Scanner | Findings | High | Critical |', '|---|---:|---:|---:|']
+          for category, counter in counts.items():
+              lines.append(f"| {category} | {sum(counter.values())} | {counter['HIGH']} | {counter['CRITICAL']} |")
+          lines += ['', 'Secret contents and locations are deliberately excluded from this report.',
+                    'The green GitHub Action status means the scanner ran, not that the code is safe.']
+          output = '\n'.join(lines) + '\n'
+          Path('trivy-summary.md').write_text(output)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as handle:
+              handle.write(output)
+          PY
+
+      - name: Upload sanitized scan report
+        uses: actions/upload-artifact@v4
+        with:
+          name: meetab-trivy-summary
+          path: |
+            trivy-summary.json
+            trivy-summary.md
+          if-no-files-found: error
+          retention-days: 7

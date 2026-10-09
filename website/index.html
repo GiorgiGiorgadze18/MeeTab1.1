@@ -32,10 +32,11 @@ background:#FBFBFB}
 .badge.free{background:var(--teal);color:#fff;border-color:var(--teal)}
 /* side panel */
 #side{position:absolute;right:0;top:0;height:100%;width:71px;background:var(--coral);border-radius:32px 0 0 32px;box-shadow:-10px 0 30px rgba(0,0,0,.28);transition:width .3s ease;overflow:hidden;color:#fff;z-index:5}
-#side.full,#side.open{width:407px}
+#side.full,#side.open,#side.weather{width:407px}
 #side>.in{position:absolute;right:0;top:0;width:407px;height:100%;display:none}
-#side.full>.f,#side.open>.p{display:block}
+#side.full>.f,#side.open>.p,#side.weather>.p{display:block}
 #side.full.open>.p{display:none}
+#side.weather>.f{display:none}
 .sbtn{position:absolute;right:20px;top:20px;width:34px;height:34px;display:grid;place-items:center}
 #clock,#clock2{left:0;right:0;top:70px;text-align:center;font-size:92px;font-weight:300;line-height:1.1}
 #sdate,#sdate2{left:0;right:0;top:182px;text-align:center;font-size:24px}
@@ -82,6 +83,16 @@ background:#FBFBFB}
 .det{top:113px;height:28px;padding:0 20px 0 14px;border-radius:10px;background:var(--ink);color:#fff;font-size:14px;display:flex;align-items:center;gap:10px}
 .det:before{content:"";width:7px;height:7px;border-radius:50%;background:#fff}
 #nav.ctr{transform:translateX(203px)}
+/* Keep the original 407px weather panel visible on calendar and booking pages. */
+#p-cal #grid{width:750px;grid-template-columns:repeat(2,312px);column-gap:47px;row-gap:24px;padding:8px;left:85px;top:138px;height:520px}
+#p-book .inp{width:395px}
+#p-book .rule{width:730px!important}
+#p-book #bOk{left:650px}
+#p-book #warn{left:415px;max-width:390px}
+#p-book #fSlots{max-width:400px;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
+#p-book #fSlots button{flex-shrink:0}
+#p-book #bDate,#p-book #bClock{display:none} /* Date/time shown in the weather panel */
+#weatherClock{top:91px;left:0;right:0;text-align:center;font-size:17px;font-weight:400}
 /* settings */
 #md.set .mtxt{display:block;left:0;right:0}
 .st-t{position:absolute;left:0;right:0;top:20px;text-align:center;font-size:18px;font-weight:500}
@@ -145,7 +156,13 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
 #qr.gone{opacity:0;transform:scale(.92);pointer-events:none}
 .qc{width:100%;height:100%;box-sizing:border-box;border-radius:20px;background:rgba(255,255,255,.92);border:1px solid #fff;box-shadow:0 8px 28px rgba(60,60,100,.14);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#303030;padding:10px}
 .qc b{font-size:17px;font-weight:700;line-height:20px}.qc span{font-size:13px;line-height:16px;opacity:.7}.qc img{width:184px;height:184px;margin-top:4px;display:block}
-#stage.narrow #qr{top:318px}
+/* Compact Wi-Fi QR only in the narrow/tablet layout.
+   At 1280px: QR spans x=732–872, beside the meeting title (ends at x=730). */
+#stage.narrow #qr{top:318px;right:408px;width:140px;height:168px}
+#stage.narrow .qc{padding:6px;gap:2px;border-radius:14px}
+#stage.narrow .qc b{font-size:12px;line-height:16px;white-space:nowrap}
+#stage.narrow .qc span{font-size:10px;line-height:12px}
+#stage.narrow .qc img{width:112px;height:112px;margin-top:2px}
 #stage.narrow #hTitle{width:var(--tw)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* booking */
 .lab{left:85px;font-size:19px}
@@ -199,8 +216,8 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
 <div id="frame">
 <!-- ============ მთავარი ============ -->
 <section class="page on" id="p-home">
-    <div class="a" style="left:90px;top:140px;font-size:22px" >შეხვედრის ოთახი</div>
-  <div class="a" style="right:558px;top:140px;font-size:22px">მაგიდა: 1 / სკამი: #</div>
+    <div class="a" id="roomType" style="left:90px;top:140px;font-size:22px">შეხვედრის ოთახი</div>
+  <div class="a" id="roomEquipment" style="right:558px;top:140px;font-size:22px">მაგიდა: 1 / სკამი: #</div>
     <div class="a rule" style="left:90px;top:306px;width:632px"></div>
   <div class="a" id="hRow" style="left:90px;top:352px;display:flex;align-items:center;gap:27px">
     <div class="badge" id="hBadge">ახლანდელი შეხვედრა</div>
@@ -273,7 +290,7 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
     <div class="a" id="sideList"></div>
   </div>
   <div class="in p">
-    <div class="a" id="sdate2"></div>
+    <div class="a" id="sdate2"></div><div class="a" id="weatherClock"></div>
     <div class="a wi" id="wIcon"></div><div class="a" id="wTemp">--° C</div><div class="a" id="wCond"></div>
     <div class="a" id="wInfo">
       <span><img src="assets/icons/wind.svg" alt=""><i id="wWind">--</i></span>
@@ -289,7 +306,7 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
   </div>
   <button class="sbtn" id="burger" aria-label="menu" style="right:20px;top:24px"><span class="bi"><i class="b1"></i><i class="b2"></i><i class="b3"></i></span></button>
 </aside>
-<div id="qr"><div class="qc"><b>WIFI EVEX GUEST</b><span>Please Scan</span><img src="assets/wifi-qr.svg" alt="Wi-Fi QR"></div></div>
+<div id="qr"><div class="qc"><b id="wifiName">WIFI EVEX GUEST</b><span>Please Scan</span><img src="assets/wifi-qr.svg" alt="Wi-Fi QR"></div></div>
 <div id="ov"><div id="md"><div class="mtxt"></div><div class="mbtns"></div></div></div>
 <div id="toast"></div>
 
@@ -314,23 +331,21 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
 
 </div>
 
+<script src="site-config.js"></script>
 <script src="app-config.js"></script>
 <script src="auth.js"></script>
 <script>
 /* ===== კონფიგურაცია ===== */
-const ROOMS = {   // TODO: დანარჩენი 3 ოთახის სახელი / ფერი / მეილი (არჩევა: index.html?room=room2)
-  gulisqari: {name: 'გულისკარი', email: 'guliskari@ip13.onmicrosoft.com', color: '#FA6E5F'},
-  room2: {name: 'ოთახი 2', email: 'room2@company.com', color: '#FA6E5F'},
-  room3: {name: 'ოთახი 3', email: 'room3@company.com', color: '#FA6E5F'},
-  room4: {name: 'ოთახი 4', email: 'room4@company.com', color: '#FA6E5F'}
-};
-const ROOM = ROOMS[new URLSearchParams(location.search).get('room')] || ROOMS.gulisqari;
+const SITE = window.MEETAB_SITE;
+const ROOMS = SITE.rooms;
+const ROOM_ID = new URLSearchParams(location.search).get('room') || 'gulisqari';
+const ROOM = ROOMS[ROOM_ID] || ROOMS.gulisqari;
 const CONFIG = {
   source: 'account',                    // account -> Google/Microsoft OAuth backend. mock only for explicit demos.
   apiBase: '/api',                      // თქვენი ბექენდ-პროქსი Outlook-ისთვის
   room: ROOM.email,                     // OUTLOOK: ოთახის mailbox
-  itEmail: 'clinics_it_support@evex.ge', canFuture: true, itWebhook: '',            // IT მოთხოვნების მისამართი
-  tz: 'Asia/Tbilisi',
+  itEmail: SITE.itSupportEmail, canFuture: true, itWebhook: '',            // IT მოთხოვნების მისამართი
+  tz: SITE.timezone,
   refreshSec: 60
 };
 
@@ -387,7 +402,7 @@ const API = {
     if (CONFIG.itWebhook) {   // მაგ. Power Automate HTTP trigger, რომელიც IT-ს მეილზე წერილს აგზავნის
       await fetch(CONFIG.itWebhook, {method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'text/plain'}, body: JSON.stringify({room: ROOM.name, email: ROOM.email, to: CONFIG.itEmail, at: new Date().toISOString()})}); return;
     }
-    if (CONFIG.source === 'mr365' || CONFIG.source === 'account') throw new Error('IT webhook is not configured');
+    if (CONFIG.source === 'account') return MeeTabAuth.requestIT(ROOM_ID);
     if (CONFIG.source === 'graph') {
       // MAIL: ბექენდი აგზავნის წერილს IT-ის მეილზე (Graph: POST /users/{room}/sendMail) — "ოთახს სჭირდება დახმარება"
       const r = await fetch(`${CONFIG.apiBase}/it-request`, {method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -478,7 +493,7 @@ function renderBook() {
 
 function tick() {
   const d = new Date();
-  $('#clock').textContent = fmtHM(d); $('#sdate').textContent = fmtDate(d);
+  $('#clock').textContent = fmtHM(d); $('#sdate').textContent = fmtDate(d); $('#weatherClock').textContent = fmtHM(d);
   const [wd, dt] = fmtDate(d).split(', '); $('#sdate2').innerHTML = `<b>${wd}</b>, ${dt}`;
   if (page === 'home') renderHome();
   if (page === 'book') renderBook();
@@ -492,8 +507,9 @@ function go(p) {
   page = p;
   showPage(p); $('#frame').classList.toggle('hd', p !== 'home'); $('#qr').classList.toggle('gone', p !== 'home');
   $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.go === p));
-  const side = $('#side'); side.classList.remove('open'); $('#burger').classList.remove('x'); side.classList.toggle('full', p === 'home');
-  $('#burger').style.display = p === 'home' ? 'none' : '';
+  const side = $('#side'); side.classList.remove('open'); $('#burger').classList.remove('x');
+  side.classList.toggle('full', p === 'home'); side.classList.toggle('weather', p !== 'home');
+  $('#burger').style.display = 'none';
   moveInd(); navPos();
   tick();
 }
@@ -545,7 +561,7 @@ function layoutHdr() {   // სათაურის სიგანე -> გ�
   m.textContent = ROOM.name; $('#frame').appendChild(m); const w = m.offsetWidth; m.remove();
   const f = $('#frame').style; f.setProperty('--dx', (85 + w + 16) + 'px'); f.setProperty('--lx', (85 + w + 33) + 'px');
 }
-function navPos() { $('#nav').classList.toggle('ctr', page !== 'home' && !$('#side').classList.contains('open')); }
+function navPos() { $('#nav').classList.remove('ctr'); }
 /* ===== ნავბარის ინდიკატორი ===== */
 let indInit = false;
 function moveInd(instant) {   // instant = გადაადგილება ანიმაციის გარეშე (დაწყებისას/ჩატვირთვისას)
@@ -557,7 +573,7 @@ function moveInd(instant) {   // instant = გადაადგილება 
 }
 
 /* ===== ამინდი (Open-Meteo, API გასაღები არ სჭირდება) ===== */
-const WX = {lat: 41.7151, lon: 44.8271, city: 'თბილისი'};
+const WX = SITE.weather;
 const WI = n => `<img src="assets/icons/weather-${n}.svg" alt="">`;
 const WICONS = {clear: WI('sunny'), partly: WI('sunny'), cloudy: WI('windy'), windy: WI('windy'), fog: WI('windy'), rain: WI('rainy'), storm: WI('rainy'), snow: WI('snowy')};
 const WSPEC = {65:'ძლიერი წვიმა', 82:'ძლიერი წვიმა', 75:'ძლიერი თოვლი', 86:'ძლიერი თოვლი'};
@@ -633,7 +649,7 @@ async function modal(html, btns, tc, bt, h, depth = 1, cls = '') {   // tc = ტ
   md.style.opacity = '';
 }
 async function sendIT() {
-  try { await API.requestIT(); modal('თქვენი მოთხოვნა დაფიქსირებულია!<br>დაელოდეთ IT მხარდაჭერის ჩართვას.', [['გასაგებია']], 117, 186, 301, 2); }
+  try { await API.requestIT(); modal('IT მოთხოვნა მიღებულია შეტყობინების სერვისის მიერ.<br>დაელოდეთ მხარდაჭერის დაკავშირებას.', [['გასაგებია']], 117, 186, 301, 2); }
   catch (e) { console.error(e); modal('მოთხოვნა ვერ გაიგზავნა.<br>სცადეთ თავიდან.', [['გასაგებია']], 117, 186, 301, 2); }
 }
 $('#bIT').onclick = () => modal('ნამდვილად გსურთ IT მოთხოვნის დაფიქსირება?', [['დიახ', sendIT], ['არა']], 103, 181, 282);
@@ -686,8 +702,13 @@ addEventListener('resize', fit); fit();
 $('#burger').style.display = 'none';
 setInterval(tick, 1000); setInterval(load, CONFIG.refreshSec * 1000);
 setNight(SET.night);
-document.documentElement.style.setProperty('--coral', ROOM.color); document.title = ROOM.name;
+document.documentElement.style.setProperty('--coral', ROOM.color);
+for (const [key, value] of Object.entries(SITE.colors || {})) if (['ink','teal','red','paper'].includes(key) && /^#[0-9a-fA-F]{6}$/.test(value)) document.documentElement.style.setProperty('--'+key, value);
+document.title = ROOM.name;
 $$('.rname').forEach(x => x.textContent = ROOM.name);
+$('#roomType').textContent = SITE.text.roomType;
+$('#roomEquipment').textContent = ROOM.equipment || SITE.text.defaultEquipment;
+$('#wifiName').textContent = SITE.text.wifiName;
 layoutHdr(); if (document.fonts) document.fonts.ready.then(layoutHdr);
 window.MeeTabAuthUpdated = () => { load(); if (page === 'book') renderBook(); };
 MeeTabAuth.init().catch(e => console.error('Profile:',e));

@@ -79,6 +79,7 @@ async function init(){
 }
 window.MeeTabAuth={init,open,ready:()=>Boolean(profile&&token&&calendarId),name:()=>profile?.name||profile?.email||'',calendar:()=>calendarId,provider:()=>profile?.provider||'',
   async listEvents(){if(!this.ready())return [];const from=new Date(Date.now()-12*3600000).toISOString(),to=new Date(Date.now()+7*86400000).toISOString();return (await call('/api/events?'+new URLSearchParams({calendarId,from,to}))).events.map(x=>({...x,start:new Date(x.start),end:new Date(x.end)}));},
-  async createEvent(ev){if(!this.ready())throw Error('ჯერ შედი პროფილში და აირჩიე ოთახის კალენდარი');return call('/api/events',{method:'POST',body:JSON.stringify({calendarId,title:ev.title,start:new Date(ev.start).toISOString(),end:new Date(ev.end).toISOString(),urgent:ev.urgent})});}
+  async createEvent(ev){if(!this.ready())throw Error('ჯერ შედი პროფილში და აირჩიე ოთახის კალენდარი');return call('/api/events',{method:'POST',body:JSON.stringify({calendarId,title:ev.title,start:new Date(ev.start).toISOString(),end:new Date(ev.end).toISOString(),urgent:ev.urgent})});},
+  async requestIT(roomId){if(!profile||!token)throw Error('IT მოთხოვნისთვის ჯერ შედი პროფილში');return call('/api/it-request',{method:'POST',body:JSON.stringify({roomId})});}
 };
 })();

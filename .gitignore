@@ -1,0 +1,6 @@
+# Local-only secrets and build outputs
+backend/*.enc
+backend/*.enc.tmp
+android/.gradle/
+android/build/
+android/app/build/

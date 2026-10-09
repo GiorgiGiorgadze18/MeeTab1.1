@@ -18,5 +18,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Verify staging-only public site routing and private-file isolation
+        run: node tests/staging-preview-static.cjs
       - name: Verify staging health and unauthenticated API isolation
         run: node tests/staging-api-smoke.cjs

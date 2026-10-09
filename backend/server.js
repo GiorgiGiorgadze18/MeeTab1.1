@@ -4,6 +4,7 @@
 const http = require('node:http');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const {serveStagingPreview}=require('./staging-preview');
 const { URL, URLSearchParams } = require('node:url');
 const PORT = +process.env.PORT || 8080;
 const API_ORIGIN = process.env.API_ORIGIN || '';
@@ -287,6 +288,11 @@ async function handler(req,res){
   if(req.method==='OPTIONS')return send(res,204,{},origin);
   const url=new URL(req.url,API_ORIGIN);const parts=url.pathname.split('/').filter(Boolean);
   try {
+    // Explicitly enabled on isolated staging only; production defaults to disabled.
+    if(process.env.STAGING_PREVIEW_MODE==='1'&&
+       (url.pathname==='/preview'||url.pathname.startsWith('/preview/'))){
+      return await serveStagingPreview(req,res,url,API_ORIGIN);
+    }
     if(url.pathname==='/health')return send(res,200,{ok:true});
     if(parts[0]==='auth'&&providers[parts[1]]&&parts[2]==='start'&&req.method==='GET'){
       if(rateLimit(req,res,origin,'oauth-start',req.socket.remoteAddress||'unknown',30,5*60000))return;

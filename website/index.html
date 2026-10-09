@@ -36,6 +36,9 @@ background:#FBFBFB}
 #side>.in{position:absolute;right:0;top:0;width:407px;height:100%;display:none}
 #side.full>.f,#side.open>.p{display:block}
 #side.full.open>.p{display:none}
+/* Weather details ease in/out with the expanding side panel. */
+#side>.in.p{display:block;opacity:0;visibility:hidden;transition:opacity .24s ease,visibility 0s linear .24s}
+#side.open>.p{opacity:1;visibility:visible;transition:opacity .36s ease .08s,visibility 0s}
 .sbtn{position:absolute;right:20px;top:20px;width:34px;height:34px;display:grid;place-items:center}
 #clock,#clock2{left:0;right:0;top:70px;text-align:center;font-size:92px;font-weight:300;line-height:1.1}
 #sdate,#sdate2{left:0;right:0;top:182px;text-align:center;font-size:24px}
@@ -85,14 +88,25 @@ background:#FBFBFB}
 .det:before{content:"";width:7px;height:7px;border-radius:50%;background:#fff}
 #nav.ctr{transform:translateX(203px)}
 /* Reflow Calendar/Booking only while the weather panel is expanded. */
-#stage.weather-open #p-cal #grid{width:750px;grid-template-columns:repeat(2,312px);column-gap:47px;row-gap:24px;padding:8px;left:85px;top:138px;height:520px}
+/* The calendar anchors never change: its cards keep their dimensions and row spacing.
+   JS FLIP motion animates the third card into the next row as columns switch 3 -> 2. */
+#stage.weather-open #p-cal #grid{grid-template-columns:repeat(2,312px)}
+/* Booking responds to the side panel at the same speed as the navbar. */
+#p-book .inp,#p-book .rule{transition:width .55s cubic-bezier(.65,0,.35,1)}
+#p-book #bOk{transition:left .55s cubic-bezier(.65,0,.35,1)}
+#p-book #warn{transition:left .55s cubic-bezier(.65,0,.35,1),max-width .55s cubic-bezier(.65,0,.35,1)}
+#p-book #bDate,#p-book #bClock{transition:opacity .35s ease,transform .55s cubic-bezier(.65,0,.35,1),visibility 0s linear .35s}
 #stage.weather-open #p-book .inp{width:395px}
 #stage.weather-open #p-book .rule{width:730px!important}
 #stage.weather-open #p-book #bOk{left:650px}
 #stage.weather-open #p-book #warn{left:415px;max-width:390px}
-#stage.weather-open #p-book #fSlots{max-width:400px;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
-#stage.weather-open #p-book #fSlots button{flex-shrink:0}
-#stage.weather-open #p-book #bDate,#stage.weather-open #p-book #bClock{display:none} /* Weather panel shows date/time when expanded */
+#stage.weather-open #p-book #bDate,#stage.weather-open #p-book #bClock{opacity:0;visibility:hidden;transform:translateY(-10px);pointer-events:none}
+/* Native touchscreen horizontal scrolling, without an HTML scrollbar. */
+#p-book #fSlots{width:605px;max-width:none;gap:9px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none;touch-action:pan-x;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-snap-type:x proximity;transition:width .55s cubic-bezier(.65,0,.35,1)}
+#p-book #fSlots::-webkit-scrollbar{display:none;width:0;height:0}
+#p-book #fSlots button{flex:0 0 137px;scroll-snap-align:start}
+#stage.weather-open #p-book #fSlots{width:400px}
+@media(prefers-reduced-motion:reduce){#p-book .inp,#p-book .rule,#p-book #bOk,#p-book #warn,#p-book #fSlots,#p-book #bDate,#p-book #bClock{transition-duration:.01ms}}
 #weatherClock{top:91px;left:0;right:0;text-align:center;font-size:17px;font-weight:400}
 /* settings */
 #md.set .mtxt{display:block;left:0;right:0}
@@ -525,6 +539,7 @@ function go(p) {
   $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.go === p));
   const side = $('#side'); side.classList.remove('open'); $('#burger').classList.remove('x');
   $('#burger').setAttribute('aria-expanded', 'false');
+  $$('#grid .card').forEach(card => card.getAnimations().forEach(animation => animation.cancel()));
   side.classList.toggle('full', p === 'home'); $('#stage').classList.remove('weather-open');
   $('#burger').style.display = p === 'home' ? 'none' : '';
   moveInd(); navPos();
@@ -533,8 +548,25 @@ function go(p) {
 $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.go));
 function setOpen(v) {
   if (page === 'home') return;
+  // FLIP: animate cards from their actual on-screen positions to their new row/column.
+  // The calendar's top, column widths and gaps stay fixed in both states.
+  const cards = page === 'cal' ? $$('#grid .card') : [];
+  const before = cards.map(card => card.getBoundingClientRect());
+  cards.forEach(card => card.getAnimations().forEach(animation => animation.cancel()));
   $('#side').classList.toggle('open', v); $('#stage').classList.toggle('weather-open', v);
   $('#burger').classList.toggle('x', v); $('#burger').setAttribute('aria-expanded', String(v)); navPos();
+  const scale = $('#stage').getBoundingClientRect().width / $('#stage').offsetWidth || 1;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduced) cards.forEach((card, i) => {
+    const after = card.getBoundingClientRect();
+    const dx = (before[i].left - after.left) / scale;
+    const dy = (before[i].top - after.top) / scale;
+    if (Math.abs(dx) < .5 && Math.abs(dy) < .5) return;
+    card.animate([
+      {transform: `translate(${dx}px, ${dy}px)`},
+      {transform: 'translate(0, 0)'}
+    ], {duration: 550, easing: 'cubic-bezier(.65,0,.35,1)'});
+  });
 }
 $('#burger').onclick = () => setOpen(!$('#side').classList.contains('open'));
 document.addEventListener('pointerdown', e => { if ($('#side').classList.contains('open') && !e.target.closest('#side, #ov')) setOpen(false); });
@@ -652,6 +684,15 @@ function showDetails(e) {
 $('#grid').onclick = ev => { const b = ev.target.closest('.det'); if (b && events[+b.dataset.i]) showDetails(events[+b.dataset.i]); };
 
 /* ===== ფანჯრები (მოდალები) ===== */
+function closeModal() { $('#ov').classList.remove('on', 'd2'); }
+// Clicking the backdrop dismisses details, settings, booking messages and IT prompts.
+// Interacting inside the dialog never dismisses it.
+$('#ov').addEventListener('pointerdown', e => { if (e.target === $('#ov')) closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('#authOverlay').classList.contains('on')) $('#authDismiss').click();
+  else if ($('#ov').classList.contains('on')) closeModal();
+});
 async function modal(html, btns, tc, bt, h, depth = 1, cls = '') {   // tc = ტექსტის ცენტრი, bt = ღილაკების top, h = სიმაღლე (ფიგმადან)
   const ov = $('#ov'), md = $('#md');
   if (ov.classList.contains('on')) {   // ახალი ფანჯარა წინას ცვლის: ძველი ქრება, ფონი მუქდება
@@ -662,7 +703,7 @@ async function modal(html, btns, tc, bt, h, depth = 1, cls = '') {   // tc = ტ
   const bb = $('.mbtns'); bb.style.top = bt + 'px'; bb.innerHTML = '';
   btns.forEach(([label, fn]) => {
     const b = document.createElement('button'); b.className = 'mb'; b.textContent = label;
-    b.onclick = () => { bb.querySelectorAll('button').forEach(x => x.disabled = true); if (fn) fn(); else ov.classList.remove('on', 'd2'); };
+    b.onclick = () => { bb.querySelectorAll('button').forEach(x => x.disabled = true); if (fn) fn(); else closeModal(); };
     bb.appendChild(b);
   });
   ov.classList.toggle('d2', depth > 1); ov.classList.add('on');

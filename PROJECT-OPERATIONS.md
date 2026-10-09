@@ -41,3 +41,9 @@ Work in feature branches, test locally and in CI, open a PR; **no direct main/pr
 - GitHub PR #4 (Draft) backend CI, PostgreSQL 18 integration test, Trivy, Android debug build all passed on `027971c...`; real Render DB connection and email persistence **not yet verified**.
 - One backend request after the redeploy returned “Login required”; likely expired authentication after restart. User may need to sign back in. Do not assume this was a DB error.
 - **Next gate:** review configuration for admin identities/secret and tenant access, verify `DATABASE_URL` internally on staging, then obtain explicit approval before merging (Render auto-deploys `main`). Never log secrets or edit current main without approval.
+
+## IT admin ownership decision — 2026-10-09
+- User selected their personal Gmail account to administer room-specific IT recipient addresses across MeeTab customer installations.
+- New **optional** server-only `IT_GLOBAL_ADMIN_IDENTITIES_JSON` allows the explicitly enrolled verified Google identity to edit IT settings for all **registered rooms of that backend**, with a second private administrator code. The email is deliberately **not published** in GitHub. Calendar/booking/IT-request authorization remains restricted to `ROOM_ACCESS_JSON`; third-party/independent deployments must opt in.
+- Risk controls: Google `email_verified` check, credential not persisted in public browser storage, audit record without plaintext email, five admin edit attempts per session per 10 minutes, database persistence.
+- Pending: private Render environment configuration, verified Google sign-in, customer consent for platform-level editing, end-to-end recipient test, Power Automate delivery and deployment approval.

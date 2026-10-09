@@ -17,8 +17,17 @@ Module._load=function(request,parent,isMain){
 const nativeFetch=global.fetch;
 global.fetch=async (url, opts={})=>{
  const addr=String(url);
- if(addr.startsWith('https://oauth2.googleapis.com/token'))return new Response(JSON.stringify({access_token:'test-local-access',refresh_token:'test-local-refresh',expires_in:3600}),{status:200});
- if(addr.startsWith('https://openidconnect.googleapis.com/v1/userinfo'))return new Response(JSON.stringify({sub:'test-user',name:'Test Fullname',email:'test@example.test'}),{status:200});
+ if(addr.startsWith('https://oauth2.googleapis.com/token')){
+   const code=new URLSearchParams(opts.body).get('code');
+   return new Response(JSON.stringify({access_token:code==='unverified-test'?'test-unverified-access':'test-local-access',refresh_token:'test-local-refresh',expires_in:3600}),{status:200});
+ }
+ if(addr.startsWith('https://openidconnect.googleapis.com/v1/userinfo')){
+   const unverified=opts.headers?.Authorization==='Bearer test-unverified-access';
+   return new Response(JSON.stringify({
+     sub:unverified?'test-unverified-user':'test-user',name:'Test Fullname',
+     email:'test@example.test',email_verified:!unverified
+   }),{status:200});
+ }
  if(addr.startsWith('https://www.googleapis.com/calendar/v3/users/me/calendarList'))return new Response(JSON.stringify({items:[{id:'test-room',summary:'Test Room',accessRole:'owner'}]}),{status:200});
  if(addr.startsWith('https://www.googleapis.com/calendar/v3/calendars/')&&(!opts.method||opts.method==='GET')){
   const now=Date.now();const d=x=>new Date(now+x).toISOString();

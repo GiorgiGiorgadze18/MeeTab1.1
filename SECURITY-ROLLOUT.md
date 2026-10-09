@@ -51,3 +51,6 @@
 
 ## Admin-only IT inbox setting
 See [IT-ADMIN-SETUP.md](IT-ADMIN-SETUP.md) for the new room-specific email editor. Server-side saving requires an authorized OAuth identity, `IT_ADMIN_TOKEN`, and `IT_CONFIG_STORAGE_DURABLE=true` with a confirmed persistent disk. No admin secret is stored in public JavaScript. Configure Power Automate separately; no email delivery is claimed without an end-to-end test.
+
+## IT-only global configuration administrator
+Optional private Render variable `IT_GLOBAL_ADMIN_IDENTITIES_JSON` names trusted verified provider accounts allowed to change the IT recipient for any `IT_ROOM_LABELS_JSON` room on this backend **after entering the private `IT_ADMIN_TOKEN`**. This is **not** a superuser role for calendars, event writes or `/api/it-request`. The old `IT_ADMIN_IDENTITIES_JSON` remains room-scoped and must obey `ROOM_ACCESS_JSON` permissions. A Google admin identity must have `email_verified: true` at OAuth sign-in; re-login required for existing sessions. Approve customer consent and register each backend separately. Never place a real admin email, admin secret, or DB URL in public `site-config.js` or committed source.

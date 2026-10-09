@@ -60,13 +60,30 @@ if(process.env.IT_ADMIN_IDENTITIES_JSON){
     IT_ADMIN_IDENTITIES=new Set(raw);
   }catch {console.error('Invalid IT_ADMIN_IDENTITIES_JSON');process.exit(1);}
 }
+// A separately configured founder/platform administrator may edit recipients for
+// any room REGISTERED on this backend, without gaining calendar or booking access.
+let IT_GLOBAL_ADMIN_IDENTITIES=new Set();
+if(process.env.IT_GLOBAL_ADMIN_IDENTITIES_JSON){
+  try{
+    const raw=JSON.parse(process.env.IT_GLOBAL_ADMIN_IDENTITIES_JSON);
+    if(!Array.isArray(raw)||!raw.length||raw.some(x=>typeof x!=='string'||!/^(google|microsoft):[^\s:@]+@[^\s:@]+\.[^\s:@]+$/.test(x)||x!==x.toLowerCase()))
+      throw Error('Invalid global admin identities');
+    IT_GLOBAL_ADMIN_IDENTITIES=new Set(raw);
+  }catch{console.error('Invalid IT_GLOBAL_ADMIN_IDENTITIES_JSON');process.exit(1);}
+}
 if(IT_ADMIN_TOKEN&&IT_ADMIN_TOKEN.length<24){console.error('IT_ADMIN_TOKEN must be at least 24 characters');process.exit(1);}
-const itConfigAdminsReady=Boolean(IT_ADMIN_TOKEN&&IT_ADMIN_IDENTITIES.size&&itStore);
+const itConfigAdminsReady=Boolean(IT_ADMIN_TOKEN&&(IT_ADMIN_IDENTITIES.size||IT_GLOBAL_ADMIN_IDENTITIES.size)&&itStore);
 const validItEmail=value=>typeof value==='string'&&value.length<=254&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
 const validItRoom=roomId=>typeof roomId==='string'&&Object.hasOwn(IT_ROOMS,roomId)&&typeof IT_ROOMS[roomId]==='string';
 const savedItRecipient=async roomId=>itStore?await itStore.get(roomId):null;
 const configuredItRecipient=async roomId=>(await savedItRecipient(roomId))||(IT_ROOM_RECIPIENTS?IT_ROOM_RECIPIENTS[roomId]:IT_SUPPORT_EMAIL)||null;
-const isItConfigAdmin=account=>IT_ADMIN_IDENTITIES.has(account.provider+':'+String(account.email||'').trim().toLowerCase());
+const itAdminIdentity=account=>account.provider+':'+String(account.email||'').trim().toLowerCase();
+// Google administrators must have an identity whose email is verified by Google.
+// Existing logins need to sign in again after this feature is deployed.
+const verifiedItAdmin=account=>account.provider!=='google'||account.emailVerified===true;
+const isItGlobalAdmin=account=>verifiedItAdmin(account)&&IT_GLOBAL_ADMIN_IDENTITIES.has(itAdminIdentity(account));
+const isItConfigAdmin=account=>verifiedItAdmin(account)&&
+  (IT_ADMIN_IDENTITIES.has(itAdminIdentity(account))||IT_GLOBAL_ADMIN_IDENTITIES.has(itAdminIdentity(account)));
 const correctAdminToken=input=>{
   if(typeof input!=='string'||!IT_ADMIN_TOKEN||input.length>1024)return false;
   const a=crypto.createHash('sha256').update(input).digest(),b=crypto.createHash('sha256').update(IT_ADMIN_TOKEN).digest();
@@ -99,12 +116,20 @@ if(process.env.ROOM_ACCESS_JSON){
   }catch(e){console.error('Invalid ROOM_ACCESS_JSON:',e.message);process.exit(1);}
 }else console.warn('SECURITY WARNING: ROOM_ACCESS_JSON not configured; room/tenant scoping NOT enforced. Configure before multi-company rollout.');
 function allowedRoom(account,scope,id){
+  // Never grant email-based room access on a Google profile whose email is unverified.
+  if(account.provider==='google'&&account.emailVerified!==true)return false;
   if(!ROOM_ACCESS)return true; // Legacy, single-customer compatibility only.
   const identity=account.provider+':'+String(account.email||'').trim().toLowerCase();
   return Boolean(ROOM_ACCESS[identity]?.[scope]?.includes(id));
 }
 function requireRoomAccess(account,scope,id){
   if(!allowedRoom(account,scope,id))throw Object.assign(new Error('Room access denied'),{status:403,public:true});
+}
+// Global IT administration is intentionally restricted to recipient settings only.
+// Do not use this bypass in /api/events, /api/calendars or /api/it-request.
+function requireItConfigAccess(account,roomId){
+  if(itConfigAdminsReady&&isItGlobalAdmin(account))return;
+  requireRoomAccess(account,'itRooms',roomId);
 }
 // Per-process throttling protects a single Render instance, not a multi-instance fleet.
 // Never accept client-supplied X-Forwarded-For as an identity (spoofable without a trusted proxy boundary).
@@ -251,7 +276,7 @@ async function callback(provider,url,res){
   const userId=provider==='google'?prof.sub:prof.id;
   if(!userId)throw new Error('Missing provider user id');
   const accountId=provider+':'+userId;const old=db.accounts[accountId]||{};
-  db.accounts[accountId]={provider,name:prof.name||prof.displayName||'',email:prof.email||prof.mail||prof.userPrincipalName||'',access:t.access_token,refresh:t.refresh_token||old.refresh||'',expires:Date.now()+(t.expires_in||3600)*1000};
+  db.accounts[accountId]={provider,name:prof.name||prof.displayName||'',email:prof.email||prof.mail||prof.userPrincipalName||'',emailVerified:provider==='google'?prof.email_verified===true:true,access:t.access_token,refresh:t.refresh_token||old.refresh||'',expires:Date.now()+(t.expires_in||3600)*1000};
   const session=rand();db.sessions[digest(session)]={accountId,expires:Date.now()+SESSION_TTL};save();
   const ticket=rand();tickets.set(ticket,{session,mode:entry.mode,expires:Date.now()+AUTH_TTL});
   const dest=new URL('auth-return.html',FRONTEND_URL.endsWith('/')?FRONTEND_URL:FRONTEND_URL+'/');dest.searchParams.set('ticket',ticket);dest.searchParams.set('mode',entry.mode);
@@ -300,7 +325,7 @@ async function handler(req,res){
     if(url.pathname==='/api/it-config'&&req.method==='GET'){
       const roomId=url.searchParams.get('roomId');
       if(!validItRoom(roomId))return send(res,400,{error:'Unknown room'},origin);
-      requireRoomAccess(account,'itRooms',roomId);
+      requireItConfigAccess(account,roomId);
       return send(res,200,{roomId,recipient:await configuredItRecipient(roomId),canEdit:itConfigAdminsReady&&isItConfigAdmin(account)},origin);
     }
     if(url.pathname==='/api/it-config'&&req.method==='POST'){
@@ -310,11 +335,12 @@ async function handler(req,res){
       if(!correctAdminToken(req.headers['x-meetab-admin-code']))return send(res,403,{error:'Invalid administrator code'},origin);
       const body=await parseJSON(req);
       if(!validItRoom(body?.roomId))return send(res,400,{error:'Unknown room'},origin);
-      requireRoomAccess(account,'itRooms',body.roomId);
+      requireItConfigAccess(account,body.roomId);
       if(!validItEmail(body?.recipient))return send(res,400,{error:'Invalid IT email address'},origin);
       const email=body.recipient.toLowerCase();
       try { await itStore.set(body.roomId,email); }
       catch(e){console.error('IT recipient database write failed:',e.message);return send(res,503,{error:'Unable to save recipient'},origin);}
+      console.info('IT recipient updated',JSON.stringify({roomId:body.roomId,adminHash:digest(itAdminIdentity(account)).slice(0,16)}));
       return send(res,200,{roomId:body.roomId,recipient:email,saved:true},origin);
     }
     if(url.pathname==='/api/it-request'&&req.method==='POST'){

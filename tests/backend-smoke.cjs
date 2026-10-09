@@ -3,7 +3,7 @@ const {spawn}=require('node:child_process'),{randomBytes}=require('node:crypto')
 const assert=require('node:assert/strict');
 const host='http://127.0.0.1:8937', origin='https://ui.example.test';
 const folder=fs.mkdtempSync(path.join(os.tmpdir(),'meetab-test-'));
-const env={...process.env,PORT:'8937',DATA_FILE:path.join(folder,'db.enc'),API_ORIGIN:'https://api.example.test',FRONTEND_URL:origin+'/MeeTab1.1/',DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),GOOGLE_CLIENT_ID:'mock-id',GOOGLE_CLIENT_SECRET:'mock-secret',IT_WEBHOOK_URL:'https://test-hook.example.test/notify',IT_SUPPORT_EMAIL:'it@example.test',IT_ROOM_LABELS_JSON:JSON.stringify({'gulisqari':'გულისკარი'}),AUTHOR_NAMES_JSON:JSON.stringify({'directory@example.test':'ლაშა გიორგაძე'})};
+const env={...process.env,PORT:'8937',DATA_FILE:path.join(folder,'db.enc'),API_ORIGIN:'https://api.example.test',FRONTEND_URL:origin+'/MeeTab1.1/',DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),GOOGLE_CLIENT_ID:'mock-id',GOOGLE_CLIENT_SECRET:'mock-secret',IT_WEBHOOK_URL:'https://test-hook.example.test/notify',IT_SUPPORT_EMAIL:'it@example.test',IT_WEBHOOK_TOKEN:'mock-private-webhook-token',IT_ROOM_RECIPIENTS_JSON:JSON.stringify({'gulisqari':'it-room@example.test'}),IT_ROOM_LABELS_JSON:JSON.stringify({'gulisqari':'გულისკარი','room2':'ოთახი 2'}),ROOM_ACCESS_JSON:JSON.stringify({'google:test@example.test':{calendars:['test-room'],itRooms:['gulisqari']}}),AUTHOR_NAMES_JSON:JSON.stringify({'directory@example.test':'ლაშა გიორგაძე'})};
 const child=spawn(process.execPath,['-r',path.resolve(__dirname,'mock-provider.cjs'),'server.js'],{cwd:path.resolve(__dirname,'../backend'),env,stdio:['ignore','pipe','pipe']});
 let output='';child.stderr.on('data',c=>output+=String(c).slice(0,200));
 const request=async(p,opts={})=>fetch(host+p,{redirect:'manual',...opts});
@@ -28,15 +28,30 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  await check('invalid origin','/api/me',{headers:{...headers,Origin:'https://other.example.test'}},403);
  await check('invalid date range','/api/events?calendarId=test-room&from=bad&to=bad',{headers},400);
  const from=new Date(Date.now()-60000).toISOString(),to=new Date(Date.now()+3600000).toISOString();
+ const calendars=await check('scoped calendar options','/api/calendars',{headers},200);assert.deepEqual((await body(calendars)).calendars.map(x=>x.id),['test-room']);
+ await check('cross-room read blocked','/api/events?'+new URLSearchParams({calendarId:'other-room',from,to}),{headers},403);
+ await check('cross-room booking blocked','/api/events',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({calendarId:'other-room',start:new Date(Date.now()+360000).toISOString(),end:new Date(Date.now()+900000).toISOString(),title:'unauthorized'})},403);
+ await check('reject malformed booking JSON','/api/events',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'{bad'},400);
+ await check('reject non-JSON media type','/api/events',{method:'POST',headers:{...headers,'Content-Type':'text/plain'},body:'hello'},415);
+ await check('reject large booking payload','/api/events',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'x'.repeat(11000)},413);
  const res=await check('calendar list names','/api/events?'+new URLSearchParams({calendarId:'test-room',from,to}),{headers},200);
  const events=(await body(res)).events;
  assert.deepEqual(events.map(x=>x.author),['Test Fullname','Bob Doe','ლაშა გიორგაძე','სახელი მიუწვდომელია','Creator Name']);
  assert(!events.some(e=>e.author.includes('@')),'Never expose an email as the author');
  await check('invalid IT JSON','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'not-json'},400);
+ await check('cross-tenant IT room blocked','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'room2'})},403);
  await check('invalid IT room','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'unknown'})},400);
  await check('IT webhook accepted','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'gulisqari'})},202);
  await check('IT cooldown','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'gulisqari'})},429);
  const during=new Date(Date.now()+180000).toISOString(),end=new Date(Date.now()+300000).toISOString();
  await check('overlapping booking rejected','/api/events',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({calendarId:'test-room',start:during,end,title:'overlap'})},409);
+ // Verify the local write throttle without ever writing a real provider event.
+ let throttled=false;
+ for(let i=0;i<20;i++){
+   const r=await request('/api/events',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({calendarId:'test-room',start:during,end,title:'overlap'})});
+   if(r.status===429){assert.equal(r.headers.get('retry-after')!==null,true);throttled=true;break;}
+   assert.equal(r.status,409);
+ }
+ assert(throttled,'Rate limit did not activate');console.log('PASS per-session booking rate limit 429');
  console.log('LOCAL_BACKEND_SMOKE=PASS');
 })().catch(e=>{console.error('LOCAL_BACKEND_SMOKE=FAIL',e.message,output);process.exitCode=1}).finally(()=>{child.kill('SIGTERM');fs.rmSync(folder,{force:true,recursive:true})});

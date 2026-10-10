@@ -23,5 +23,7 @@ jobs:
         run: node tests/calendar-sync.test.cjs
       - name: Test IT recipient loading and editor visibility
         run: node tests/it-help-loading.cjs
+      - name: Test room spelling and existing data compatibility
+        run: node tests/room-identity.cjs
       - name: Check Android kiosk admin onboarding controls
         run: node tests/android-kiosk-security.cjs

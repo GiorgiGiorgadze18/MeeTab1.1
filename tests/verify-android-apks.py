@@ -31,7 +31,7 @@ for flavor, package, label, scheme, config in [
     subprocess.run([apksigner, 'verify', str(apk)], check=True, stdout=subprocess.DEVNULL)
     with zipfile.ZipFile(apk) as archive:
         assert archive.read('assets/www/app-config.js') == config, f'{flavor} backend configuration mismatch'
-        for item in ['index.html', 'auth.js', 'auth-return.html']:
+        for item in ['index.html', 'auth.js', 'auth-return.html', 'site-config.js']:
             assert archive.read('assets/www/' + item) == (root / 'website' / item).read_bytes()
         assert not any(name.endswith(('.enc', '.keystore', '.jks', '.env')) for name in archive.namelist())
     evidence.append({'flavor': flavor, 'package': package, 'label': label, 'auth_scheme': scheme,

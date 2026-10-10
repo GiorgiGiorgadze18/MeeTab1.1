@@ -2,7 +2,7 @@
 (function(){
 'use strict';
 const $=s=>document.querySelector(s), API_BASE=(window.MEETAB_API_BASE||'').replace(/\/$/,'');
-const ROOM_KEY=new URLSearchParams(location.search).get('room')||'gulisqari';
+const ROOM_KEY=window.MeeTabRoom(new URLSearchParams(location.search).get('room')).id;
 let token=sessionStorage.getItem('meetab_session')||'',profile=null,calendarId='',choices=[];
 const sessionKey=()=>profile?'meetab_calendar_'+profile.provider+'_'+ROOM_KEY:'';
 const notify=()=>{updateUI();if(typeof window.MeeTabAuthUpdated==='function')window.MeeTabAuthUpdated();};

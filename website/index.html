@@ -371,9 +371,9 @@ body.night .logo{filter:brightness(1.45) saturate(1.2)}
 <script>
 /* ===== კონფიგურაცია ===== */
 const SITE = window.MEETAB_SITE;
-const ROOMS = SITE.rooms;
-const ROOM_ID = new URLSearchParams(location.search).get('room') || 'gulisqari';
-const ROOM = ROOMS[ROOM_ID] || ROOMS.gulisqari;
+const SELECTED_ROOM = window.MeeTabRoom(new URLSearchParams(location.search).get('room'));
+const ROOM_ID = SELECTED_ROOM.id;
+const ROOM = SELECTED_ROOM.room;
 const CONFIG = {
   source: 'account',                    // account -> Google/Microsoft OAuth backend. mock only for explicit demos.
   apiBase: '/api',                      // თქვენი ბექენდ-პროქსი Outlook-ისთვის

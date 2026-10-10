@@ -2,7 +2,7 @@ name: MeeTab Trivy security audit
 
 on:
   pull_request:
-    branches: [main, 'release/meetab-integrated-preview-*']
+    branches: [main, 'release/meetab-integrated-preview-*', 'fix/calendar-account-switch-20261010']
   workflow_dispatch:
 
 permissions:

@@ -32,7 +32,9 @@ async function restore(){
 }
 async function login(provider){
   if(invalidBase()){$('#authMessage').textContent='საჭიროა backend-ის კონფიგურაცია. იხილე README.md';return;}
-  const url=API_BASE+'/auth/'+provider+'/start?mode='+(window.MeeTabNative || location.hostname==='appassets.androidplatform.net'?'app':'web');
+  const native=window.MeeTabNative || location.hostname==='appassets.androidplatform.net';
+  const mode=native?(window.MEETAB_APP_MODE==='staging'?'staging':'app'):'web';
+  const url=API_BASE+'/auth/'+provider+'/start?mode='+mode;
   // Android wrapper intercepts this URL and opens Chrome (OAuth in WebView is blocked).
   location.assign(url);
 }

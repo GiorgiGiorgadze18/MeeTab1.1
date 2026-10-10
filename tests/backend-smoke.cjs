@@ -20,6 +20,8 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  await check('unauthenticated profile','/api/me',{},401);
  await check('unauthenticated IT settings','/api/it-config?roomId=gulisqari',{},401);
  await check('unauthenticated IT help','/api/it-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roomId:'gulisqari'})},401);
+ await check('reject unrecognized OAuth mode','/auth/google/start?mode=external',{},400);
+ await check('reject staging OAuth mode when preview is disabled','/auth/google/start?mode=staging',{},400);
  const start=await check('start OAuth','/auth/google/start',{},302);
  const state=new URL(start.headers.get('location')).searchParams.get('state');assert(state);
  const cb=await check('Google callback mock',`/auth/google/callback?state=${encodeURIComponent(state)}&code=local-test`,{},302);

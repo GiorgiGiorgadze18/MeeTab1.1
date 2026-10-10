@@ -1,9 +1,10 @@
 <!doctype html><html lang="ka"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>MeeTab — შესვლა</title><style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;background:#fbfbfb;display:grid;place-items:center;color:#303030}main{text-align:center;padding:40px;max-width:480px}button{background:#FA6E5F;color:#fff;border:0;border-radius:14px;padding:16px 24px;font-size:18px;cursor:pointer}</style></head><body><main><h1>MeeTab</h1><p id="desc">ავტორიზაციის დასრულება...</p><button id="go" hidden>დაბრუნება MeeTab-ში</button></main><script>
 const p=new URLSearchParams(location.search),ticket=p.get('ticket'),mode=p.get('mode');
 if(!ticket||!/^[A-Za-z0-9_-]{30,100}$/.test(ticket))document.getElementById('desc').textContent='ავტორიზაცია ვერ დასრულდა. სცადეთ თავიდან.';
-else if(mode==='app'){
+else if(mode==='app'||mode==='staging'){
   document.getElementById('desc').textContent='გასაგრძელებლად დაბრუნდით MeeTab აპლიკაციაში.';
-  const b=document.getElementById('go');b.hidden=false;b.onclick=()=>location.assign('meetab://auth?ticket='+encodeURIComponent(ticket));
+  const scheme=mode==='staging'?'meetab-staging':'meetab';
+  const b=document.getElementById('go');b.hidden=false;b.onclick=()=>location.assign(scheme+'://auth?ticket='+encodeURIComponent(ticket));
   // Chrome can block automatic custom-scheme navigation; the button always remains.
   b.click();
 }else{

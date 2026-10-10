@@ -82,7 +82,7 @@ public class MainActivity extends Activity {
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest req){
                 Uri uri=req.getUrl();
-                if("meetab".equals(uri.getScheme())){handleUri(uri);return true;}
+                if(BuildConfig.AUTH_SCHEME.equals(uri.getScheme())){handleUri(uri);return true;}
                 if("https".equals(uri.getScheme())&&uri.getPath()!=null&&uri.getPath().matches("/auth/(google|microsoft)/start")){
                     openBrowser(uri);return true;
                 }
@@ -99,7 +99,7 @@ public class MainActivity extends Activity {
                 if(!failed){handler.removeCallbacks(retry);deliverTicket();}
             }
         });
-        if(getIntent()!=null&&"meetab".equals(getIntent().getScheme()))handleUri(getIntent().getData());
+        if(getIntent()!=null&&BuildConfig.AUTH_SCHEME.equals(getIntent().getScheme()))handleUri(getIntent().getData());
         load();
         if(!prefs.contains(ADMIN_HASH))enrollAdmin(false);
     }
@@ -108,7 +108,7 @@ public class MainActivity extends Activity {
         catch(Exception ex){new AlertDialog.Builder(this).setMessage("საჭიროა ბრაუზერი ავტორიზაციისთვის").setPositiveButton("OK",null).show();}
     }
     private void handleUri(Uri uri){
-        if(uri==null||!"meetab".equals(uri.getScheme())||!"auth".equals(uri.getHost()))return;
+        if(uri==null||!BuildConfig.AUTH_SCHEME.equals(uri.getScheme())||!"auth".equals(uri.getHost()))return;
         String ticket=uri.getQueryParameter("ticket");
         if(ticket==null||!ticket.matches("[A-Za-z0-9_-]{30,100}"))return;
         pendingTicket=ticket;

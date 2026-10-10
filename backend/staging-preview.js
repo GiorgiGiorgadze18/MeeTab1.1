@@ -25,7 +25,7 @@ async function serveStagingPreview(req,res,url,apiOrigin){
   if(parts.some(x=>!x||x==='.'||x==='..'||x.startsWith('.')||x.includes('\\')||x.includes('\0')||x.includes(':')))
     return response(req,res,404,'Not found');
   if(!['index.html','auth.js','auth-return.html','site-config.js','app-config.js'].includes(requested)&&
-      !(requested.startsWith('assets/')&&parts.length>=2))return response(req,res,404,'Not found');
+      !((requested.startsWith('assets/')||requested.startsWith('fonts/'))&&parts.length>=2))return response(req,res,404,'Not found');
   if(requested==='app-config.js')
     return response(req,res,200,'window.MEETAB_API_BASE = '+JSON.stringify(apiOrigin)+';\n',MIME['.js']);
   const filename=path.resolve(ROOT,requested);

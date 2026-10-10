@@ -1,4 +1,9 @@
 'use strict';
+async function start(){
+if(process.env.STAGING_DB_SETUP_ACTION){
+  await require('./staging-db-admin').prepare(process.env);
+}
+delete process.env.STAGING_DB_OWNER_URL;
 /* MeeTab backend: two confidential OAuth integrations + room-specific calendar sync.
  * Node >=20. No external packages. Use HTTPS reverse proxy in deployment. */
 const http = require('node:http');
@@ -402,3 +407,8 @@ async function handler(req,res){
 }
 const server=http.createServer(handler);server.listen(PORT,()=>console.log(`MeeTab API listening on ${PORT}`));
 setInterval(()=>{const now=Date.now();for(const [k,v] of pending)if(v.expires<now)pending.delete(k);for(const [k,v] of tickets)if(v.expires<now)tickets.delete(k);for(const [k,v] of itThrottle)if(v<now)itThrottle.delete(k);for(const [k,v] of requestCounts)if(v.reset<=now)requestCounts.delete(k);},60000).unref();
+}
+start().catch(error=>{
+  // Never emit connection URLs, passwords, SQL text or private error details.
+  console.error('MeeTab startup failed:',error.code||error.name||'error');process.exitCode=1;
+});

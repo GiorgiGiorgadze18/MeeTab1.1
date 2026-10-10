@@ -40,6 +40,10 @@ jobs:
         env:
           PG_TEST_DATABASE_URL: postgresql://meetab_ci:ci_test_only_password@127.0.0.1:5432/meetab_ci
         run: node tests/postgres-smoke.cjs
+      - name: Staging provisioning, isolation, persistence and rollback on PostgreSQL 18
+        env:
+          PG_TEST_DATABASE_URL: postgresql://meetab_ci:ci_test_only_password@127.0.0.1:5432/meetab_ci
+        run: node tests/staging-postgres.cjs
       - name: Browser integration JavaScript syntax
         run: node --check website/auth.js && node --check website/site-config.js
       - name: Inline website JavaScript syntax and IT UI controls

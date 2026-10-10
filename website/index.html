@@ -785,8 +785,7 @@ async function openITHelp() {
   const address=$('#itCurrent'),hint=$('#itHint'),edit=$('#itEdit'),editor=$('#itEditor'),
         recipient=$('#itRecipient'),code=$('#itAdminCode'),save=$('#itSave');
   if(!address||!hint)return;
-  address.textContent=CONFIG.itEmail||'არ არის მითითებული';
-  hint.textContent='მისამართის გამოყენება უნდა დადასტურდეს სერვერზე.';
+  hint.textContent='მიმდინარეობს მისამართის სერვერიდან ჩატვირთვა...';
   let selectedAddress='';
   try {
     const config=await MeeTabAuth.getITConfig(ROOM_ID);
@@ -796,7 +795,10 @@ async function openITHelp() {
     hint.textContent=config.recipient?'შეტყობინების მიმღები დადასტურებულია სერვერზე.':'ამ ოთახისთვის IT-ის მისამართი ჯერ არ არის დაყენებული.';
     edit.hidden=!config.canEdit;
   } catch(e) {
-    if(address.isConnected)hint.textContent='IT-ის პარამეტრების სანახავად შედით პროფილში, ან გადაამოწმეთ Backend-ის კავშირი.';
+    if(address.isConnected){
+      address.textContent='ვერ ჩაიტვირთა';
+      hint.textContent='IT-ის პარამეტრების სანახავად შედით პროფილში, ან გადაამოწმეთ Backend-ის კავშირი.';
+    }
     return;
   }
   const resizeEditor=expanded=>{

@@ -1,5 +1,5 @@
 // Runs isolated, local backend with mocked Google and webhook responses.
-const {spawn}=require('node:child_process'),{randomBytes}=require('node:crypto'),os=require('node:os'),fs=require('node:fs'),path=require('node:path');
+const {spawn}=require('node:child_process'),{randomBytes,createHash}=require('node:crypto'),os=require('node:os'),fs=require('node:fs'),path=require('node:path');
 const assert=require('node:assert/strict');
 const host='http://127.0.0.1:8937', origin='https://ui.example.test';
 const folder=fs.mkdtempSync(path.join(os.tmpdir(),'meetab-test-'));
@@ -8,6 +8,7 @@ IT_GLOBAL_ADMIN_IDENTITIES_JSON:JSON.stringify(['google:test@example.test']),DAT
 const child=spawn(process.execPath,['-r',path.resolve(__dirname,'mock-provider.cjs'),'server.js'],{cwd:path.resolve(__dirname,'../backend'),env,stdio:['ignore','pipe','pipe']});
 let output='';child.stderr.on('data',c=>output+=String(c).slice(0,200));
 const request=async(p,opts={})=>fetch(host+p,{redirect:'manual',...opts});
+const verifier=randomBytes(32).toString('base64url'),clientChallenge=createHash('sha256').update(verifier).digest('base64url');
 const body=async r=>r.json();
 const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.equal(r.status,status,label+' HTTP '+r.status);console.log('PASS',label,status);return r;};
 (async()=>{
@@ -22,11 +23,11 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  await check('unauthenticated IT help','/api/it-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roomId:'gulisqari'})},401);
  await check('reject unrecognized OAuth mode','/auth/google/start?mode=external',{},400);
  await check('reject staging OAuth mode when preview is disabled','/auth/google/start?mode=staging',{},400);
- const start=await check('start OAuth','/auth/google/start',{},302);
+ const start=await check('start OAuth','/auth/google/start?'+new URLSearchParams({client_challenge:clientChallenge}),{},302);
  const state=new URL(start.headers.get('location')).searchParams.get('state');assert(state);
  const cb=await check('Google callback mock',`/auth/google/callback?state=${encodeURIComponent(state)}&code=local-test`,{},302);
  const ticket=new URL(cb.headers.get('location')).searchParams.get('ticket');assert(ticket);
- const sessionResponse=await check('ticket exchange','/auth/exchange',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ticket})},200);
+ const sessionResponse=await check('ticket exchange','/auth/exchange',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ticket,verifier})},200);
  const token=(await body(sessionResponse)).session;const headers={Origin:origin,Authorization:'Bearer '+token};
  const profile=await check('authenticated profile','/api/me',{headers},200);assert.equal((await body(profile)).name,'Test Fullname');
  await check('invalid origin','/api/me',{headers:{...headers,Origin:'https://other.example.test'}},403);
@@ -70,11 +71,11 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  await check('IT cooldown','/api/it-request',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({roomId:'gulisqari'})},429);
  // A Google identity presenting the SAME email with email_verified:false must never
  // gain IT administration or access to a room through the email-based ACL.
- const startBad=await check('unverified Google OAuth test start','/auth/google/start',{},302);
+ const startBad=await check('unverified Google OAuth test start','/auth/google/start?'+new URLSearchParams({client_challenge:clientChallenge}),{},302);
  const stateBad=new URL(startBad.headers.get('location')).searchParams.get('state');
  const cbBad=await check('unverified Google callback','/auth/google/callback?'+new URLSearchParams({state:stateBad,code:'unverified-test'}),{},302);
  const ticketBad=new URL(cbBad.headers.get('location')).searchParams.get('ticket');
- const resultBad=await check('unverified ticket exchange','/auth/exchange',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ticket:ticketBad})},200);
+ const resultBad=await check('unverified ticket exchange','/auth/exchange',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ticket:ticketBad,verifier})},200);
  const badToken=(await body(resultBad)).session,badHeaders={Origin:origin,Authorization:'Bearer '+badToken};
  await check('unverified email cannot read IT config','/api/it-config?roomId=room2',{headers:badHeaders},403);
  await check('unverified email cannot edit global IT config','/api/it-config',{

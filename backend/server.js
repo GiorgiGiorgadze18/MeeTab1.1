@@ -262,11 +262,13 @@ async function listEvents(account,id,from,to){
   }
   return out.filter(x => x.status!=='cancelled' && x.showAs!=='free').map(e=>normalizedEvent(account,e)).filter(e=>e.start&&e.end);
 }
-const startAuth=(provider,mode,res)=>{
+const startAuth=(provider,mode,res,clientChallenge)=>{
   const p=providers[provider];if(!p?.id||!p.secret)return send(res,503,{error:'Provider is not configured'});
   if(!['app','web'].includes(mode)&&!(mode==='staging'&&process.env.STAGING_PREVIEW_MODE==='1'))return send(res,400,{error:'Invalid mode'});
+  if(typeof clientChallenge!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(clientChallenge))
+    return send(res,400,{error:'Start sign-in from an updated MeeTab app or page'});
   const state=rand(),verifier=rand(),challenge=crypto.createHash('sha256').update(verifier).digest('base64url');
-  pending.set(state,{provider,mode,verifier,expires:Date.now()+10*60000});
+  pending.set(state,{provider,mode,verifier,clientChallenge,expires:Date.now()+10*60000});
   const q=new URLSearchParams({client_id:p.id,response_type:'code',redirect_uri:`${API_ORIGIN}/auth/${provider}/callback`,response_mode:'query',scope:p.scope,state,code_challenge:challenge,code_challenge_method:'S256'});
   if(provider==='google'){q.set('access_type','offline');q.set('prompt','consent');}
   return redirect(res,p.authorize+'?'+q);
@@ -284,7 +286,7 @@ async function callback(provider,url,res){
   const accountId=provider+':'+userId;const old=db.accounts[accountId]||{};
   db.accounts[accountId]={provider,name:prof.name||prof.displayName||'',email:prof.email||prof.mail||prof.userPrincipalName||'',emailVerified:provider==='google'?prof.email_verified===true:true,access:t.access_token,refresh:t.refresh_token||old.refresh||'',expires:Date.now()+(t.expires_in||3600)*1000};
   const session=rand();db.sessions[digest(session)]={accountId,expires:Date.now()+SESSION_TTL};save();
-  const ticket=rand();tickets.set(ticket,{session,mode:entry.mode,expires:Date.now()+AUTH_TTL});
+  const ticket=rand();tickets.set(ticket,{session,mode:entry.mode,clientChallenge:entry.clientChallenge,expires:Date.now()+AUTH_TTL});
   const dest=new URL('auth-return.html',FRONTEND_URL.endsWith('/')?FRONTEND_URL:FRONTEND_URL+'/');dest.searchParams.set('ticket',ticket);dest.searchParams.set('mode',entry.mode);
   redirect(res,dest.href);
 }
@@ -301,7 +303,7 @@ async function handler(req,res){
     if(url.pathname==='/health')return send(res,200,{ok:true});
     if(parts[0]==='auth'&&providers[parts[1]]&&parts[2]==='start'&&req.method==='GET'){
       if(rateLimit(req,res,origin,'oauth-start',req.socket.remoteAddress||'unknown',30,5*60000))return;
-      return startAuth(parts[1],url.searchParams.get('mode')||'web',res);
+      return startAuth(parts[1],url.searchParams.get('mode')||'web',res,url.searchParams.get('client_challenge'));
     }
     if(parts[0]==='auth'&&providers[parts[1]]&&parts[2]==='callback'&&req.method==='GET'){
       if(rateLimit(req,res,origin,'oauth-callback',req.socket.remoteAddress||'unknown',35,5*60000))return;
@@ -310,8 +312,22 @@ async function handler(req,res){
     if(url.pathname==='/auth/exchange'&&req.method==='POST'){
       if(origin!==front.origin && origin!==APP_ORIGIN)return send(res,403,{error:'Invalid origin'},origin);
       if(rateLimit(req,res,origin,'oauth-exchange',req.socket.remoteAddress||'unknown',30,5*60000))return;
-      const b=await parseJSON(req),v=tickets.get(b.ticket);tickets.delete(b.ticket);
-      if(!v||v.expires<Date.now())return send(res,401,{error:'Link expired. Sign in again.'},origin);
+      const b=await parseJSON(req);
+      if(!b||typeof b!=='object'||Array.isArray(b))return send(res,400,{error:'Invalid sign-in request'},origin);
+      const v=typeof b.ticket==='string'&&tickets.get(b.ticket);
+      if(!v||v.expires<Date.now()){
+        if(v)tickets.delete(b.ticket);
+        return send(res,401,{error:'Sign-in link invalid. Start again in MeeTab.'},origin);
+      }
+      if(origin!==(v.mode==='web'?front.origin:APP_ORIGIN))return send(res,403,{error:'Invalid sign-in origin'},origin);
+      // The originating app/tab alone retains this proof. A copied return URL
+      // or a spoofed Origin header cannot exchange the ticket for a session.
+      if(typeof b.verifier!=='string'||!/^[A-Za-z0-9._~-]{43,128}$/.test(b.verifier))
+        return send(res,401,{error:'Sign-in link invalid. Start again in MeeTab.'},origin);
+      const challenge=crypto.createHash('sha256').update(b.verifier).digest('base64url');
+      if(!crypto.timingSafeEqual(Buffer.from(challenge),Buffer.from(v.clientChallenge)))
+        return send(res,401,{error:'Sign-in link invalid. Start again in MeeTab.'},origin);
+      tickets.delete(b.ticket); // Consume only after matching mode and client proof.
       return send(res,200,{session:v.session,expiresIn:SESSION_TTL/1000},origin);
     }
     if(origin&&origin!==front.origin&&origin!==APP_ORIGIN)return send(res,403,{error:'Invalid origin'},origin);

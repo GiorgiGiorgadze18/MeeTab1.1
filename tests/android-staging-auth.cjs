@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { spawn } = require('node:child_process');
-const { randomBytes } = require('node:crypto');
+const { randomBytes, createHash, webcrypto } = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const auth = fs.readFileSync(path.join(root, 'website/auth.js'), 'utf8');
 const siteConfig = fs.readFileSync(path.join(root, 'website/site-config.js'), 'utf8');
@@ -19,14 +19,18 @@ async function checkLogin(hostname, configuredMode, expectedMode) {
   };
   let destination;
   const window = { MEETAB_API_BASE: 'https://api.example.test', MEETAB_APP_MODE: configuredMode };
-  const storage = { getItem() { return null; }, setItem() {}, removeItem() {} };
-  const context = { window, document: { querySelector: element }, URLSearchParams, sessionStorage: storage, localStorage: storage,
+  const stored = new Map(), storage = { getItem(k) { return stored.get(k) || null; }, setItem(k,v) { stored.set(k,v); }, removeItem(k) { stored.delete(k); } };
+  const context = { window, document: { querySelector: element }, URLSearchParams, sessionStorage: storage, localStorage: storage, crypto: webcrypto, TextEncoder, btoa,
     location: { hostname, search: '', assign(url) { destination = url; } } };
   vm.runInNewContext(siteConfig, context);
   vm.runInNewContext(auth, context);
   await window.MeeTabAuth.init();
   await element('#loginGoogle').click();
-  assert.equal(destination, 'https://api.example.test/auth/google/start?mode=' + expectedMode);
+  const url = new URL(destination), attempt = JSON.parse(stored.get('meetab_auth_attempt'));
+  assert.equal(url.origin + url.pathname, 'https://api.example.test/auth/google/start');
+  assert.equal(url.searchParams.get('mode'), expectedMode);
+  assert.equal(url.searchParams.get('client_challenge'), createHash('sha256').update(attempt.verifier).digest('base64url'));
+  assert(!url.href.includes(attempt.verifier), 'Never put the private proof in the browser URL');
 }
 
 function checkReturn(mode, ticket, expected) {
@@ -57,8 +61,11 @@ async function checkBackend() {
     }
     assert(healthy, 'Local backend must start');
     assert.equal((await request('/auth/google/start?mode=external')).status, 400);
+    assert.equal((await request('/auth/google/start?mode=staging')).status, 400, 'Missing client proof must not start sign-in');
+    assert.equal((await request('/auth/google/start?mode=staging&client_challenge=bad')).status, 400);
     for (const mode of ['staging', 'app', 'web']) {
-      const start = await request('/auth/google/start?mode=' + mode);
+      const verifier = randomBytes(32).toString('base64url'), challenge = createHash('sha256').update(verifier).digest('base64url');
+      const start = await request('/auth/google/start?' + new URLSearchParams({ mode, client_challenge: challenge }));
       assert.equal(start.status, 302);
       const state = new URL(start.headers.get('location')).searchParams.get('state');
       const callbackPath = '/auth/google/callback?' + new URLSearchParams({ state, code: 'local-test', mode: 'external' });
@@ -68,10 +75,14 @@ async function checkBackend() {
       assert.equal(destination.origin + destination.pathname, 'https://ui.example.test/preview/auth-return.html');
       assert.equal(destination.searchParams.get('mode'), mode, 'Mode is bound to OAuth state, not callback input');
       const ticket = destination.searchParams.get('ticket');
-      const exchange = origin => request('/auth/exchange', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket }) });
+      const exchange = (origin, proof = verifier) => request('/auth/exchange', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket, verifier: proof }) });
+      const matchingOrigin = mode === 'web' ? 'https://ui.example.test' : appOrigin;
       assert.equal((await exchange('https://untrusted.example.test')).status, 403);
-      assert.equal((await exchange(appOrigin)).status, 200);
-      assert.equal((await exchange(appOrigin)).status, 401, 'One-time ticket must not replay');
+      assert.equal((await exchange(matchingOrigin, null)).status, 401, 'A copied ticket alone is insufficient');
+      assert.equal((await exchange(matchingOrigin, randomBytes(32).toString('base64url'))).status, 401);
+      assert.equal((await exchange(mode === 'web' ? appOrigin : 'https://ui.example.test')).status, 403, 'Ticket mode constrains origin');
+      assert.equal((await exchange(matchingOrigin)).status, 200, 'Bad proofs must not consume the legitimate ticket');
+      assert.equal((await exchange(matchingOrigin)).status, 401, 'One-time ticket must not replay');
       assert.equal((await request(callbackPath)).status, 400, 'OAuth state must not replay');
     }
   } finally {

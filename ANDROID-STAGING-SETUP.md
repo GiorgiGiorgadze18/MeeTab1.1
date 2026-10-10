@@ -27,3 +27,9 @@ CI packages the exact PR head. The built-APK check compares bundled configs/scri
 5. Roll back tablet testing by removing only MeeTab Staging. Its local settings are separate; server-side saved recipient data is retained. A new CI debug build may have a different debug signing certificate, so it may require uninstall/re-enrollment. Official upgrades need one owner-controlled signing key.
 
 No physical-device result or authenticated staging-app result is claimed by the build checks. Deployment, installed-artifact verification, signed release and device QA are separate evidence levels.
+
+## Sign-in compatibility for 1.1.2
+
+Use the updated web frontend or APK with the matching backend. Each sign-in creates a private random proof in the initiating tab/WebView; its SHA-256 challenge is sent at OAuth start and the private proof is required when exchanging the one-time return ticket. The existing provider PKCE, callback URLs, Android return schemes and room/calendar selection are retained. No additional environment variable or OAuth scope is required.
+
+Older APKs/pages without this proof cannot start a fresh sign-in against the updated backend. Refresh hosted pages or install the updated staging APK before testing browser return. Keep the previous backend/APK pair for rollback. Validate successful return, a cancelled/restarted login, logout and resume on the physical tablet; automated mock-provider tests cover matching proof, copied/injected tickets, replay, wrong mode/origin and invalid input.

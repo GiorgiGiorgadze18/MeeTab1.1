@@ -3,7 +3,7 @@ android {
     namespace 'ge.evex.meetab'
     compileSdk 35
     defaultConfig {
-        applicationId 'ge.evex.meetab'; minSdk 23; targetSdk 35; versionCode 3; versionName '1.1.1'
+        applicationId 'ge.evex.meetab'; minSdk 23; targetSdk 35; versionCode 4; versionName '1.1.2'
         manifestPlaceholders = [meetabLabel: 'MeeTab', meetabAuthScheme: 'meetab']
         buildConfigField 'String', 'AUTH_SCHEME', '"meetab"'
     }

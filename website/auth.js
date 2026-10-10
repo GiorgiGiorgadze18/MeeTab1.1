@@ -3,6 +3,7 @@
 'use strict';
 const $=s=>document.querySelector(s), API_BASE=(window.MEETAB_API_BASE||'').replace(/\/$/,'');
 const ROOM_KEY=window.MeeTabRoom(new URLSearchParams(location.search).get('room')).id;
+const ATTEMPT_KEY='meetab_auth_attempt',ATTEMPT_TTL=12*60*1000;
 let token=sessionStorage.getItem('meetab_session')||'',profile=null,calendarId='',choices=[];
 const sessionKey=()=>profile?'meetab_calendar_'+profile.provider+'_'+ROOM_KEY:'';
 const notify=()=>{updateUI();if(typeof window.MeeTabAuthUpdated==='function')window.MeeTabAuthUpdated();};
@@ -16,7 +17,14 @@ async function call(path, options={}){
 }
 async function useTicket(ticket){
   if(!/^[a-zA-Z0-9_-]{30,100}$/.test(ticket))throw Error('ავტორიზაციის ბმული არასწორია');
-  const x=await call('/auth/exchange',{method:'POST',body:JSON.stringify({ticket})});
+  let attempt;
+  try{attempt=JSON.parse(sessionStorage.getItem(ATTEMPT_KEY)||'null');}catch{}
+  const age=Date.now()-attempt?.at;
+  if(attempt?.api!==API_BASE||typeof attempt?.verifier!=='string'||!/^[a-f0-9]{64}$/.test(attempt.verifier)||
+      !Number.isFinite(attempt?.at)||!Number.isFinite(age)||age<0||age>ATTEMPT_TTL)
+    throw Error('შესვლა დაიწყეთ ამ აპიდან ან ბრაუზერის ჩანართიდან და სცადეთ თავიდან.');
+  const x=await call('/auth/exchange',{method:'POST',body:JSON.stringify({ticket,verifier:attempt.verifier})});
+  sessionStorage.removeItem(ATTEMPT_KEY);
   token=x.session;sessionStorage.setItem('meetab_session',token);
   await restore();
   open();
@@ -34,9 +42,16 @@ async function login(provider){
   if(invalidBase()){$('#authMessage').textContent='საჭიროა backend-ის კონფიგურაცია. იხილე README.md';return;}
   const native=window.MeeTabNative || location.hostname==='appassets.androidplatform.net';
   const mode=native?(window.MEETAB_APP_MODE==='staging'?'staging':'app'):'web';
-  const url=API_BASE+'/auth/'+provider+'/start?mode='+mode;
-  // Android wrapper intercepts this URL and opens Chrome (OAuth in WebView is blocked).
-  location.assign(url);
+  try{
+    const bytes=crypto.getRandomValues(new Uint8Array(32));
+    const verifier=Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('');
+    const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
+    const challenge=btoa(String.fromCharCode(...hash)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    sessionStorage.setItem(ATTEMPT_KEY,JSON.stringify({verifier,at:Date.now(),api:API_BASE}));
+    const url=API_BASE+'/auth/'+provider+'/start?'+new URLSearchParams({mode,client_challenge:challenge});
+    // Keep the proof in this tab/WebView; only its hash reaches the external browser.
+    location.assign(url);
+  }catch{$('#authMessage').textContent='შესვლის დაწყება ვერ მოხერხდა. სცადეთ თავიდან ან განაახლეთ ბრაუზერი.';}
 }
 function options(){
   const sel=$('#calendarList');sel.replaceChildren();const def=document.createElement('option');def.value='';def.textContent='აირჩიე ოთახის კალენდარი';sel.append(def);
@@ -63,7 +78,7 @@ function saveCalendar(){
 }
 async function logout(){
   try{await call('/api/logout',{method:'POST'});}catch{}
-  profile=null;token='';calendarId='';choices=[];sessionStorage.removeItem('meetab_session');notify();open();
+  profile=null;token='';calendarId='';choices=[];sessionStorage.removeItem('meetab_session');sessionStorage.removeItem(ATTEMPT_KEY);notify();open();
 }
 async function init(){
   $('#profileBtn').addEventListener('click',open);
@@ -74,7 +89,7 @@ async function init(){
   $('#saveCalendar').addEventListener('click',saveCalendar);
   $('#disconnect').addEventListener('click',logout);
   $('#calendarList').addEventListener('change',()=>{$('#calendarManual').value='';});
-  window.MeeTabReceiveTicket=ticket=>{useTicket(ticket).catch(e=>{open();$('#authMessage').textContent=e.message;});};
+  window.MeeTabReceiveTicket=ticket=>useTicket(ticket).catch(e=>{open();$('#authMessage').textContent=e.message;});
   const qs=new URLSearchParams(location.search),ticket=qs.get('ticket');
   if(ticket){qs.delete('ticket');const clean=location.pathname+(qs.size?'?'+qs:'')+location.hash;history.replaceState(null,'',clean);await window.MeeTabReceiveTicket(ticket);}
   else await restore();

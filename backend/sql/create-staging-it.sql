@@ -25,6 +25,14 @@ COMMENT ON SCHEMA meetab_staging IS 'MeeTab staging IT v1';
 COMMENT ON ROLE meetab_staging IS 'MeeTab staging IT v1';
 REVOKE ALL ON SCHEMA meetab_staging FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA meetab_staging TO meetab_staging;
+-- The provisioning owner retains ownership so it can inspect/lock the new
+-- table during guarded cleanup without changing its existing memberships.
+CREATE TABLE meetab_staging.meetab_it_recipients (
+  room_id VARCHAR(128) PRIMARY KEY,
+  recipient VARCHAR(254) NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+GRANT SELECT, INSERT, UPDATE ON meetab_staging.meetab_it_recipients TO meetab_staging;
 DO $$
 BEGIN
   EXECUTE format('GRANT CONNECT ON DATABASE %I TO meetab_staging', current_database());
@@ -53,9 +61,9 @@ BEGIN
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname NOT IN ('meetab_staging', 'information_schema')
       AND n.nspname NOT LIKE 'pg_%'
-      AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-      AND pg_catalog.has_table_privilege('meetab_staging', c.oid,
-        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      AND CASE WHEN c.relkind IN ('r', 'p', 'v', 'm', 'f') THEN
+        pg_catalog.has_table_privilege('meetab_staging', c.oid,
+          'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') ELSE false END
   ) THEN
     RAISE EXCEPTION 'Staging role inherits access to existing tables: refusing provisioning';
   END IF;
@@ -63,8 +71,10 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname NOT IN ('meetab_staging', 'information_schema')
-      AND n.nspname NOT LIKE 'pg_%' AND c.relkind = 'S'
-      AND pg_catalog.has_sequence_privilege('meetab_staging', c.oid, 'USAGE,SELECT,UPDATE')
+      AND n.nspname NOT LIKE 'pg_%'
+      -- CASE matters: planner evaluation order is not the order of AND clauses.
+      AND CASE WHEN c.relkind = 'S' THEN
+        pg_catalog.has_sequence_privilege('meetab_staging', c.oid, 'USAGE,SELECT,UPDATE') ELSE false END
   ) THEN
     RAISE EXCEPTION 'Staging role inherits access to existing sequences: refusing provisioning';
   END IF;

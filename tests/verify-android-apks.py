@@ -24,6 +24,7 @@ for flavor, package, label, scheme, config in [
     manifest = subprocess.check_output([aapt, 'dump', 'xmltree', str(apk), 'AndroidManifest.xml'], text=True)
     assert f"package: name='{package}'" in badging
     assert f"application-label:'{label}'" in badging
+    assert "sdkVersion:'23'" in badging and "targetSdkVersion:'35'" in badging
     assert 'android:scheme' in manifest and f'="{scheme}"' in manifest
     for attribute in ['allowBackup', 'usesCleartextTraffic']:
         assert re.search(r'android:' + attribute + r'[^\n]*=\(type 0x12\)0x0\b', manifest), attribute + ' must be false'

@@ -8,6 +8,7 @@ const { spawn } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const auth = fs.readFileSync(path.join(root, 'website/auth.js'), 'utf8');
+const siteConfig = fs.readFileSync(path.join(root, 'website/site-config.js'), 'utf8');
 const returnScript = fs.readFileSync(path.join(root, 'website/auth-return.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
 
 async function checkLogin(hostname, configuredMode, expectedMode) {
@@ -19,8 +20,10 @@ async function checkLogin(hostname, configuredMode, expectedMode) {
   let destination;
   const window = { MEETAB_API_BASE: 'https://api.example.test', MEETAB_APP_MODE: configuredMode };
   const storage = { getItem() { return null; }, setItem() {}, removeItem() {} };
-  vm.runInNewContext(auth, { window, document: { querySelector: element }, URLSearchParams, sessionStorage: storage, localStorage: storage,
-    location: { hostname, search: '', assign(url) { destination = url; } } });
+  const context = { window, document: { querySelector: element }, URLSearchParams, sessionStorage: storage, localStorage: storage,
+    location: { hostname, search: '', assign(url) { destination = url; } } };
+  vm.runInNewContext(siteConfig, context);
+  vm.runInNewContext(auth, context);
   await window.MeeTabAuth.init();
   await element('#loginGoogle').click();
   assert.equal(destination, 'https://api.example.test/auth/google/start?mode=' + expectedMode);

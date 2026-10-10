@@ -6,6 +6,9 @@ const ROOM_KEY=window.MeeTabRoom(new URLSearchParams(location.search).get('room'
 const ATTEMPT_KEY='meetab_auth_attempt',ATTEMPT_TTL=12*60*1000;
 let token=sessionStorage.getItem('meetab_session')||'',profile=null,calendarId='',choices=[];
 const sessionKey=()=>profile?'meetab_calendar_'+profile.provider+'_'+ROOM_KEY:'';
+const calendarsDisabled=()=>Array.isArray(profile?.calendarIds)&&!profile.calendarIds.length;
+const canUseCalendar=id=>Boolean(profile)&&(!Array.isArray(profile.calendarIds)||profile.calendarIds.includes(id));
+const calendarDenied='ამ ანგარიშს ოთახის კალენდარზე წვდომა არ აქვს. მიმართეთ ადმინისტრატორს.';
 const notify=()=>{updateUI();if(typeof window.MeeTabAuthUpdated==='function')window.MeeTabAuthUpdated();};
 const invalidBase=()=>!/^https:\/\/[\w.-]+(?::\d+)?$/.test(API_BASE);
 async function call(path, options={}){
@@ -31,12 +34,16 @@ async function useTicket(ticket){
 }
 async function restore(){
   if(!token)return notify();
+  profile=null;calendarId='';choices=[];
   try{
-    profile=await call('/api/me'); calendarId=localStorage.getItem(sessionKey())||'';
-    const j=await call('/api/calendars');choices=j.calendars||[];
+    profile=await call('/api/me');
+    const saved=localStorage.getItem(sessionKey())||'';
+    if(!calendarsDisabled())choices=(await call('/api/calendars')).calendars||[];
+    calendarId=canUseCalendar(saved)?saved:'';
     // Don't pick a private user's calendar automatically for a public room tablet.
     notify();
-  }catch(e){choices=[];notify();$('#authMessage').textContent=e.message;}
+    $('#authMessage').textContent=calendarsDisabled()?calendarDenied:'';
+  }catch(e){calendarId='';choices=[];notify();$('#authMessage').textContent=e.message;}
 }
 async function login(provider){
   if(invalidBase()){$('#authMessage').textContent='საჭიროა backend-ის კონფიგურაცია. იხილე README.md';return;}
@@ -58,13 +65,14 @@ function options(){
   choices.forEach(x=>{const o=document.createElement('option');o.value=x.id;o.textContent=x.name+(x.role&&x.role==='reader'?' (მხოლოდ წაკითხვა)':'');sel.append(o);});
   sel.value=choices.some(x=>x.id===calendarId)?calendarId:'';
   $('#calendarManual').value=sel.value?'':calendarId;
+  sel.disabled=calendarsDisabled();$('#calendarManual').disabled=calendarsDisabled();$('#saveCalendar').disabled=calendarsDisabled();
 }
 function updateUI(){
   const yes=Boolean(profile), name=profile?.name||profile?.email||'';
   $('#profileLabel').textContent=yes?(name.length>19?name.slice(0,18)+'…':name):'პროფილი';
   $('#authIdent').textContent=yes?`${name}\n${profile.email||''} · ${profile.provider==='google'?'Google':'Microsoft'}`:'აირჩიე ანგარიში, რომლის კალენდართანაც გინდა დაკავშირება.';
   $('#authLogin').hidden=yes;$('#authConnected').hidden=!yes;
-  $('#chosenCalendar').textContent=calendarId?'კალენდარი: '+(choices.find(x=>x.id===calendarId)?.name||calendarId):'ოთახის კალენდარი ჯერ არჩეული არ არის';
+  $('#chosenCalendar').textContent=calendarsDisabled()?calendarDenied:calendarId?'კალენდარი: '+(choices.find(x=>x.id===calendarId)?.name||calendarId):'ოთახის კალენდარი ჯერ არჩეული არ არის';
   const author=$('#bookAuthor');if(author)author.textContent=yes?(profile?.name&&!profile.name.includes('@')?profile.name:'სახელი მიუწვდომელია'):'საჭიროა შესვლა';
   if(yes)options();
 }
@@ -74,6 +82,7 @@ function saveCalendar(){
   const id=($('#calendarManual').value.trim()||$('#calendarList').value).trim();
   if(!id){$('#authMessage').textContent='აირჩიე ან ჩაწერე კალენდრის ID.';return;}
   if(id.length>256){$('#authMessage').textContent='ID მეტისმეტად გრძელია';return;}
+  if(!canUseCalendar(id)){$('#authMessage').textContent=calendarDenied;return;}
   calendarId=id;localStorage.setItem(sessionKey(),id);$('#authMessage').textContent='კალენდარი შენახულია. სინქრონიზაცია მიმდინარეობს…';notify();close();
 }
 async function logout(){

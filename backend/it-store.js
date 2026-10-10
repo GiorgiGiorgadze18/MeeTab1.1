@@ -1,8 +1,8 @@
 'use strict';
 // PostgreSQL-backed room IT recipients. All SQL inputs are parameterized.
 const {Pool}=require('pg');
-module.exports=function createITStore(connectionString){
-  const pool=new Pool({connectionString,connectionTimeoutMillis:5000,max:3,
+module.exports=function createITStore(connectionString,options={}){
+  const pool=options.pool||new Pool({connectionString,connectionTimeoutMillis:5000,max:3,
     idleTimeoutMillis:30000,statement_timeout:10000});
   let setup;
   async function ready(){
@@ -14,7 +14,7 @@ module.exports=function createITStore(connectionString){
     await setup;
   }
   return {
-    async close(){await pool.end()},
+    async close(){if(!options.pool)await pool.end()},
     async get(roomId){
       await ready();
       const result=await pool.query('SELECT recipient FROM meetab_it_recipients WHERE room_id=$1',[roomId]);

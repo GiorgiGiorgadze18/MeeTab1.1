@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const host='http://127.0.0.1:8937', origin='https://ui.example.test';
 const folder=fs.mkdtempSync(path.join(os.tmpdir(),'meetab-test-'));
 const env={...process.env,PORT:'8937',DATA_FILE:path.join(folder,'db.enc'),API_ORIGIN:'https://api.example.test',FRONTEND_URL:origin+'/MeeTab1.1/',DATA_ENCRYPTION_KEY:randomBytes(32).toString('hex'),GOOGLE_CLIENT_ID:'mock-id',GOOGLE_CLIENT_SECRET:'mock-secret',IT_WEBHOOK_URL:'https://test-hook.example.test/notify',IT_SUPPORT_EMAIL:'it@example.test',IT_WEBHOOK_TOKEN:'mock-private-webhook-token',IT_ADMIN_TOKEN:'local-test-admin-token-at-least-24-chars',IT_ADMIN_IDENTITIES_JSON:JSON.stringify(['google:test@example.test']),
-IT_GLOBAL_ADMIN_IDENTITIES_JSON:JSON.stringify(['google:test@example.test']),DATABASE_URL:'postgresql://mock-local-unit-test',IT_ROOM_RECIPIENTS_JSON:JSON.stringify({'gulisqari':'it-room@example.test'}),IT_ROOM_LABELS_JSON:JSON.stringify({'gulisqari':'გულისკარი','room2':'ოთახი 2'}),ROOM_ACCESS_JSON:JSON.stringify({'google:test@example.test':{calendars:['test-room'],itRooms:['gulisqari']}}),AUTHOR_NAMES_JSON:JSON.stringify({'directory@example.test':'ლაშა გიორგაძე'})};
+IT_GLOBAL_ADMIN_IDENTITIES_JSON:JSON.stringify(['google:test@example.test']),DATABASE_URL:'postgresql://mock-local-unit-test',IT_ROOM_RECIPIENTS_JSON:JSON.stringify({'gulisqari':'it-room@example.test'}),IT_ROOM_LABELS_JSON:JSON.stringify({'gulisqari':'გულისკარი','room2':'ოთახი 2'}),ROOM_ACCESS_JSON:JSON.stringify({'google:test@example.test':{calendars:['test-room'],itRooms:['gulisqari']},'google:it-only@example.test':{calendars:[],itRooms:['gulisqari']}}),AUTHOR_NAMES_JSON:JSON.stringify({'directory@example.test':'ლაშა გიორგაძე'})};
 const child=spawn(process.execPath,['-r',path.resolve(__dirname,'mock-provider.cjs'),'server.js'],{cwd:path.resolve(__dirname,'../backend'),env,stdio:['ignore','pipe','pipe']});
 let output='';child.stderr.on('data',c=>output+=String(c).slice(0,200));
 const request=async(p,opts={})=>fetch(host+p,{redirect:'manual',...opts});
@@ -29,7 +29,8 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  const ticket=new URL(cb.headers.get('location')).searchParams.get('ticket');assert(ticket);
  const sessionResponse=await check('ticket exchange','/auth/exchange',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ticket,verifier})},200);
  const token=(await body(sessionResponse)).session;const headers={Origin:origin,Authorization:'Bearer '+token};
- const profile=await check('authenticated profile','/api/me',{headers},200);assert.equal((await body(profile)).name,'Test Fullname');
+ const profile=await check('authenticated profile','/api/me',{headers},200);const ownProfile=await body(profile);
+ assert.equal(ownProfile.name,'Test Fullname');assert.deepEqual(ownProfile.calendarIds,['test-room']);
  await check('invalid origin','/api/me',{headers:{...headers,Origin:'https://other.example.test'}},403);
  await check('invalid date range','/api/events?calendarId=test-room&from=bad&to=bad',{headers},400);
  const from=new Date(Date.now()-60000).toISOString(),to=new Date(Date.now()+3600000).toISOString();
@@ -77,11 +78,23 @@ const check=async(label,p,opts,status)=>{const r=await request(p,opts);assert.eq
  const ticketBad=new URL(cbBad.headers.get('location')).searchParams.get('ticket');
  const resultBad=await check('unverified ticket exchange','/auth/exchange',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ticket:ticketBad,verifier})},200);
  const badToken=(await body(resultBad)).session,badHeaders={Origin:origin,Authorization:'Bearer '+badToken};
+ assert.deepEqual((await body(await check('unverified profile calendar context','/api/me',{headers:badHeaders},200))).calendarIds,[]);
  await check('unverified email cannot read IT config','/api/it-config?roomId=room2',{headers:badHeaders},403);
  await check('unverified email cannot edit global IT config','/api/it-config',{
    method:'POST',headers:{...badHeaders,'Content-Type':'application/json','X-MeeTab-Admin-Code':'local-test-admin-token-at-least-24-chars'},
    body:JSON.stringify({roomId:'room2',recipient:'attacker@example.test'})},403);
  await check('unverified email cannot access room calendar','/api/events?'+new URLSearchParams({calendarId:'test-room',from,to}),{headers:badHeaders},403);
+ const itStart=await request('/auth/google/start?'+new URLSearchParams({client_challenge:clientChallenge}));
+ const itState=new URL(itStart.headers.get('location')).searchParams.get('state');
+ const itCallback=await request('/auth/google/callback?'+new URLSearchParams({state:itState,code:'it-only-test'}));
+ const itTicket=new URL(itCallback.headers.get('location')).searchParams.get('ticket');
+ const itExchange=await request('/auth/exchange',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ticket:itTicket,verifier})});
+ assert.equal(itExchange.status,200);const itHeaders={Origin:origin,Authorization:'Bearer '+(await body(itExchange)).session};
+ assert.deepEqual((await body(await check('IT-only profile calendar context','/api/me',{headers:itHeaders},200))).calendarIds,[]);
+ assert.deepEqual((await body(await check('IT-only calendar options empty','/api/calendars',{headers:itHeaders},200))).calendars,[]);
+ await check('IT-only cannot read previous account calendar','/api/events?'+new URLSearchParams({calendarId:'test-room',from,to}),{headers:itHeaders},403);
+ const itConfig=await body(await check('IT-only reads saved recipient','/api/it-config?roomId=gulisqari',{headers:itHeaders},200));
+ assert.equal(itConfig.recipient,'updated-it@example.test');assert.equal(itConfig.canEdit,false);
  const during=new Date(Date.now()+180000).toISOString(),end=new Date(Date.now()+300000).toISOString();
  await check('overlapping booking rejected','/api/events',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({calendarId:'test-room',start:during,end,title:'overlap'})},409);
  // Verify the local write throttle without ever writing a real provider event.

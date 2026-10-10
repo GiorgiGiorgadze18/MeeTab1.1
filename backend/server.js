@@ -8,7 +8,6 @@ delete process.env.STAGING_DB_OWNER_URL;
  * Node >=20. No external packages. Use HTTPS reverse proxy in deployment. */
 const http = require('node:http');
 const crypto = require('node:crypto');
-const fs = require('node:fs');
 const {serveStagingPreview}=require('./staging-preview');
 const { URL, URLSearchParams } = require('node:url');
 const PORT = +process.env.PORT || 8080;
@@ -42,13 +41,17 @@ if (front.search || front.hash || api.pathname !== '/' || api.search) {
 }
 const rand = () => crypto.randomBytes(32).toString('base64url');
 const digest = s => crypto.createHash('sha256').update(s).digest('hex');
-const encrypt = plain => { const iv=crypto.randomBytes(12), c=crypto.createCipheriv('aes-256-gcm',key,iv), encrypted=Buffer.concat([c.update(plain,'utf8'),c.final()]);return Buffer.concat([iv,c.getAuthTag(),encrypted]).toString('base64'); };
-const decrypt = encoded => { const b=Buffer.from(encoded,'base64'), d=crypto.createDecipheriv('aes-256-gcm',key,b.subarray(0,12));d.setAuthTag(b.subarray(12,28));return Buffer.concat([d.update(b.subarray(28)),d.final()]).toString(); };
-let db = {accounts:{},sessions:{}};
-try { db=JSON.parse(decrypt(fs.readFileSync(DATA_FILE,'utf8'))); } catch (e) { if (fs.existsSync(DATA_FILE)) throw e; }
+const authMode=process.env.AUTH_STORAGE||'file';
+// Share the restricted role's three connections with IT settings.
+const postgresPool=authMode==='postgres'?new (require('pg').Pool)({connectionString:process.env.DATABASE_URL,
+  connectionTimeoutMillis:5000,max:3,idleTimeoutMillis:30000,statement_timeout:10000}):null;
+if(postgresPool)postgresPool.on('error',()=>console.error('PostgreSQL pool unavailable'));
+let authStore;
+try{authStore=await require('./auth-store')({mode:authMode,filename:DATA_FILE,key,pool:postgresPool});}
+catch(error){await postgresPool?.end();throw error;}
+if(authMode==='postgres')console.info('AUTH_STORAGE_READY: encrypted PostgreSQL staging store');
 // IT settings live in Render PostgreSQL rather than the ephemeral Free web-service disk.
-const itStore=process.env.DATABASE_URL?require('./it-store')(process.env.DATABASE_URL):null;
-function save() {const filename=DATA_FILE+'.tmp';fs.writeFileSync(filename,encrypt(JSON.stringify(db)),{mode:0o600}); fs.renameSync(filename,DATA_FILE);}
+const itStore=process.env.DATABASE_URL?require('./it-store')(process.env.DATABASE_URL,{pool:postgresPool}):null;
 const pending=new Map(),tickets=new Map(),locks=new Set();
 // Server-owned IT recipient and webhook; never trust public frontend input for routing.
 const IT_WEBHOOK_URL=process.env.IT_WEBHOOK_URL||'';
@@ -215,13 +218,28 @@ async function exchangeToken(provider,body){
   const conf=providers[provider];const r=await fetch(conf.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
   const x=await r.json();if(!r.ok||!x.access_token)throw new Error('OAuth token failed: '+(x.error_description||x.error||r.status));return x;
 }
+const refreshing=new Map();
 async function accessToken(account){
   if(Date.now()+60000<(account.expires||0))return account.access;
-  if(!account.refresh)throw Object.assign(new Error('Please sign in again'),{status:401});
-  const p=providers[account.provider]; const x=await exchangeToken(account.provider,{grant_type:'refresh_token',refresh_token:account.refresh,client_id:p.id,client_secret:p.secret});
-  account.access=x.access_token;account.refresh=x.refresh_token||account.refresh;account.expires=Date.now()+x.expires_in*1000;save();return account.access;
+  if(refreshing.has(account.id))return refreshing.get(account.id);
+  const task=(async()=>{
+    const current=await authStore.getAccount(account.id);
+    if(!current)throw Object.assign(new Error('Please sign in again'),{status:401});
+    if(Date.now()+60000<(current.expires||0))return current.access;
+    if(!current.refresh)throw Object.assign(new Error('Please sign in again'),{status:401});
+    const p=providers[current.provider];const x=await exchangeToken(current.provider,{grant_type:'refresh_token',refresh_token:current.refresh,client_id:p.id,client_secret:p.secret});
+    current.access=x.access_token;current.refresh=x.refresh_token||current.refresh;current.expires=Date.now()+x.expires_in*1000;
+    const saved=await authStore.updateAccount(current.id,current);return saved.access;
+  })();
+  refreshing.set(account.id,task);
+  try{return await task;}finally{refreshing.delete(account.id);}
 }
-function authenticate(req){const match=/^Bearer ([A-Za-z0-9_-]+)$/.exec(req.headers.authorization||'');const session=match&&db.sessions[digest(match[1])];if(!session||session.expires<Date.now())throw Object.assign(new Error('Login required'),{status:401});const account=db.accounts[session.accountId];if(!account)throw Object.assign(new Error('Login expired'),{status:401});return {session,account,hash:digest(match[1])};}
+async function authenticate(req){
+  const match=/^Bearer ([A-Za-z0-9_-]+)$/.exec(req.headers.authorization||'');
+  const hash=match&&digest(match[1]),result=hash&&await authStore.authenticate(hash,Date.now());
+  if(!result)throw Object.assign(new Error('Login required'),{status:401});
+  return {...result,hash};
+}
 function calendarRoute(provider,id,kind){
   if(typeof id!=='string'||!id.trim()||id.length>256)throw Object.assign(new Error('Choose a room calendar'),{status:400});
   const escaped=encodeURIComponent(id.trim());
@@ -283,9 +301,9 @@ async function callback(provider,url,res){
   const prof=await providerRequest(provider==='google'?'https://openidconnect.googleapis.com/v1/userinfo':'https://graph.microsoft.com/v1.0/me',t.access_token);
   const userId=provider==='google'?prof.sub:prof.id;
   if(!userId)throw new Error('Missing provider user id');
-  const accountId=provider+':'+userId;const old=db.accounts[accountId]||{};
-  db.accounts[accountId]={provider,name:prof.name||prof.displayName||'',email:prof.email||prof.mail||prof.userPrincipalName||'',emailVerified:provider==='google'?prof.email_verified===true:true,access:t.access_token,refresh:t.refresh_token||old.refresh||'',expires:Date.now()+(t.expires_in||3600)*1000};
-  const session=rand();db.sessions[digest(session)]={accountId,expires:Date.now()+SESSION_TTL};save();
+  const accountId=provider+':'+userId;const old=await authStore.getAccount(accountId)||{};
+  const account={provider,name:prof.name||prof.displayName||'',email:prof.email||prof.mail||prof.userPrincipalName||'',emailVerified:provider==='google'?prof.email_verified===true:true,access:t.access_token,refresh:t.refresh_token||old.refresh||'',expires:Date.now()+(t.expires_in||3600)*1000};
+  const session=rand();await authStore.login(accountId,account,digest(session),Date.now()+SESSION_TTL);
   const ticket=rand();tickets.set(ticket,{session,mode:entry.mode,clientChallenge:entry.clientChallenge,expires:Date.now()+AUTH_TTL});
   const dest=new URL('auth-return.html',FRONTEND_URL.endsWith('/')?FRONTEND_URL:FRONTEND_URL+'/');dest.searchParams.set('ticket',ticket);dest.searchParams.set('mode',entry.mode);
   redirect(res,dest.href);
@@ -332,11 +350,16 @@ async function handler(req,res){
     }
     if(origin&&origin!==front.origin&&origin!==APP_ORIGIN)return send(res,403,{error:'Invalid origin'},origin);
     if(parts[0]!=='api')return send(res,404,{error:'Not found'},origin);
-    const {account,hash}=authenticate(req);
-    if(url.pathname==='/api/me'&&req.method==='GET')return send(res,200,{provider:account.provider,name:account.name,email:account.email},origin);
+    const {account,hash}=await authenticate(req);
+    if(url.pathname==='/api/me'&&req.method==='GET'){
+      // Own permitted IDs are UI context only; every calendar action still checks the ACL.
+      const calendarIds=ROOM_ACCESS?(ROOM_ACCESS[itAdminIdentity(account)]?.calendars||[])
+        .filter(id=>allowedRoom(account,'calendars',id)):(verifiedItAdmin(account)?null:[]);
+      return send(res,200,{provider:account.provider,name:account.name,email:account.email,calendarIds},origin);
+    }
     if(url.pathname==='/api/events'&&req.method==='GET'&&rateLimit(req,res,origin,'calendar-read',hash,100,60000))return;
     if(url.pathname==='/api/events'&&req.method==='POST'&&rateLimit(req,res,origin,'calendar-write',hash,12,60000))return;
-    if(url.pathname==='/api/logout'&&req.method==='POST'){delete db.sessions[hash];save();return send(res,200,{ok:true},origin);}
+    if(url.pathname==='/api/logout'&&req.method==='POST'){await authStore.logout(hash);return send(res,200,{ok:true},origin);}
     if(url.pathname==='/api/calendars'&&req.method==='GET'){
       const tok=await accessToken(account);let names=[];
       if(account.provider==='google'){
@@ -415,14 +438,17 @@ async function handler(req,res){
     }
     return send(res,404,{error:'Unknown API path'},origin);
   }catch(e){
-    const status=e.status>=400&&e.status<500?e.status:502;
+    const status=e.code==='AUTH_STORE_UNAVAILABLE'?503:e.status>=400&&e.status<500?e.status:502;
     // Avoid leaking Google/Microsoft error descriptions, tokens, or database diagnostics to users.
     console.error('Request:',url.pathname,status,e.code||e.name||'error');
-    return send(res,status,{error:e.public?e.message:status===401?'Please sign in again':status===403?'Access denied':status===502?'Upstream service unavailable':'Invalid request'},origin);
+    return send(res,status,{error:e.public?e.message:status===401?'Please sign in again':status===403?'Access denied':status===503?'Authentication storage unavailable':status===502?'Upstream service unavailable':'Invalid request'},origin);
   }
 }
 const server=http.createServer(handler);server.listen(PORT,()=>console.log(`MeeTab API listening on ${PORT}`));
-setInterval(()=>{const now=Date.now();for(const [k,v] of pending)if(v.expires<now)pending.delete(k);for(const [k,v] of tickets)if(v.expires<now)tickets.delete(k);for(const [k,v] of itThrottle)if(v<now)itThrottle.delete(k);for(const [k,v] of requestCounts)if(v.reset<=now)requestCounts.delete(k);},60000).unref();
+let pruning=false;
+setInterval(()=>{const now=Date.now();for(const [k,v] of pending)if(v.expires<now)pending.delete(k);for(const [k,v] of tickets)if(v.expires<now)tickets.delete(k);for(const [k,v] of itThrottle)if(v<now)itThrottle.delete(k);for(const [k,v] of requestCounts)if(v.reset<=now)requestCounts.delete(k);
+  if(authMode==='postgres'&&!pruning){pruning=true;authStore.prune(now).catch(()=>console.error('Expired session cleanup unavailable')).finally(()=>{pruning=false;});}
+},60000).unref();
 }
 start().catch(error=>{
   // Never emit connection URLs, passwords, SQL text or private error details.

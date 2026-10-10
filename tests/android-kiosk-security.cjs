@@ -1,0 +1,15 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const java=fs.readFileSync(path.join(__dirname,'../android/app/src/main/java/ge/evex/meetab/MainActivity.java'),'utf8');
+assert.doesNotMatch(java,/\bPIN\s*=\s*["']/,'No fixed kiosk PIN in APK source');
+assert.match(java,/PBKDF2WithHmacSHA1/,'Require strong local passphrase hash');
+assert.match(java,/new SecureRandom\(\)\.nextBytes\(salt\)/,'Require per-install salt');
+assert.match(java,/MessageDigest\.isEqual/,'Require constant-time hash comparison');
+assert.match(java,/ADMIN_ITERATIONS\s*=\s*180000/,'Password stretching configured');
+assert.match(java,/onCreate[\s\S]*?enrollAdmin\(false\)/,'Require owner enrollment on fresh install');
+assert.match(java,/ADMIN_LOCKED_UNTIL/,'Require brute-force lockout');
+assert.match(java,/enrollAdmin\(true\)/,'Allow secure code change');
+assert.match(java,/MeeTabRefreshCalendar/,'Calendar must refresh on kiosk resume');
+console.log('ANDROID_ADMIN_TEST=PASS');

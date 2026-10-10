@@ -1,0 +1,66 @@
+name: MeeTab backend security smoke tests
+on:
+  pull_request:
+    branches: [main, 'release/meetab-integrated-preview-*', 'fix/calendar-account-switch-20261010']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:18
+        env:
+          POSTGRES_USER: meetab_ci
+          POSTGRES_PASSWORD: ci_test_only_password
+          POSTGRES_DB: meetab_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U meetab_ci -d meetab_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout reviewed commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install backend runtime dependencies (PostgreSQL driver)
+        run: npm install --prefix backend --no-audit --no-fund
+      - name: Backend JavaScript syntax
+        run: node --check backend/server.js && node --check backend/it-store.js && node --check backend/auth-store.js
+      - name: Verify existing encrypted auth files and storage configuration gates
+        run: node tests/auth-file-store.cjs
+      - name: Integration test against real PostgreSQL 18 container
+        env:
+          PG_TEST_DATABASE_URL: postgresql://meetab_ci:ci_test_only_password@127.0.0.1:5432/meetab_ci
+        run: node tests/postgres-smoke.cjs
+      - name: Staging provisioning, isolation, persistence and rollback on PostgreSQL 18
+        env:
+          PG_TEST_DATABASE_URL: postgresql://meetab_ci:ci_test_only_password@127.0.0.1:5432/meetab_ci
+        run: node tests/staging-postgres.cjs
+      - name: Encrypted auth persistence and actual backend restart on PostgreSQL 18
+        env:
+          PG_TEST_DATABASE_URL: postgresql://meetab_ci:ci_test_only_password@127.0.0.1:5432/meetab_ci
+        run: node tests/auth-postgres.cjs
+      - name: Browser integration JavaScript syntax
+        run: node --check website/auth.js && node --check website/site-config.js
+      - name: Inline website JavaScript syntax and IT UI controls
+        run: node tests/frontend-syntax.cjs
+      - name: Isolated OAuth, calendar, ACL, IT and rate-limit smoke tests
+        run: node tests/backend-smoke.cjs
+
+      - name: Verify staging Android OAuth routing
+        run: node tests/android-staging-auth.cjs
+      - name: Verify sign-in proof belongs to the initiating app or tab
+        run: node tests/oauth-ticket-proof.cjs
+      - name: Verify calendar selection across calendar and IT-only accounts
+        run: node tests/calendar-access-context.cjs

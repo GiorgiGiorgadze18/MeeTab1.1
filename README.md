@@ -16,13 +16,13 @@
 
 Edit **`website/site-config.js`**:
 
-- `rooms.gulisqari.name`, `.color`, `.email`, `.equipment` and additional rooms.
+- `rooms.guliskari.name`, `.color`, `.email`, `.equipment` and additional rooms.
 - `text.roomType`, `text.defaultEquipment`, `text.wifiName`.
 - `colors` for ink/teal/red/paper, plus each room's coral.
 - `weather.lat`, `weather.lon`, `timezone`.
 - `itSupportEmail` for display/documentation. **It does not control actual delivery**, which is configured on the server.
 
-The room can be chosen with `?room=room2`. Do not put API secrets, OAuth client secrets or mail-service API keys in this file (GitHub Pages is public).
+The default room is **გულისკარი / guliskari**, selectable with `?room=guliskari`; the earlier `?room=gulisqari` link remains valid. Its `backendId: 'gulisqari'` preserves the existing room ACL, PostgreSQL recipient and per-room calendar selection without a data migration. Other rooms can be chosen with `?room=room2`. Do not put API secrets, OAuth client secrets or mail-service API keys in this file (GitHub Pages is public).
 
 The Backend origin stays in `website/app-config.js` and is currently set to the user's existing Render URL. **The new IT endpoint will not exist on Render until an owner-approved backend deployment.**
 

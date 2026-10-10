@@ -1,0 +1,25 @@
+name: MeeTab staging API security probe
+on:
+  pull_request:
+    branches: [main, 'release/meetab-integrated-preview-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify staging-only public site routing and private-file isolation
+        run: node tests/staging-preview-static.cjs
+      - name: Verify staging health and unauthenticated API isolation
+        run: node tests/staging-api-smoke.cjs

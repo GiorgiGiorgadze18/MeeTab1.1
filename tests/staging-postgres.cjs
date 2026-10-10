@@ -75,6 +75,12 @@ async function noStaging(){
   await noStaging();
   assert.equal((await owner.query("SELECT count(*)::int AS n FROM pg_class c, LATERAL aclexplode(c.relacl) a WHERE c.oid='public.meetab_production_sentinel'::regclass AND a.grantee=0 AND a.privilege_type='SELECT'")).rows[0].n,1);
   await owner.query('REVOKE SELECT ON public.meetab_production_sentinel FROM PUBLIC');
+  // "pgapp" is an ordinary schema, not PostgreSQL's reserved "pg_" prefix.
+  await owner.query('CREATE SCHEMA pgapp');
+  await owner.query('GRANT CREATE ON SCHEMA pgapp TO PUBLIC');
+  await assert.rejects(provision(owner,stagingPassword,target),/outside its schema/);
+  await noStaging();
+  await owner.query('DROP SCHEMA pgapp RESTRICT');
   console.log('PASS staging PostgreSQL: non-superuser provisioning, restricted login, private password escaping, persistence, collision refusal, data-preserving rollback, dependency refusal, atomic cleanup and unchanged existing table');
 })().catch(error=>{console.error('FAIL staging PostgreSQL:',error.message);process.exitCode=1;})
   .finally(async()=>{

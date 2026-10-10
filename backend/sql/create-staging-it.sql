@@ -51,7 +51,7 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_catalog.pg_namespace n
     WHERE n.nspname NOT IN ('meetab_staging', 'information_schema')
-      AND n.nspname NOT LIKE 'pg_%'
+      AND left(n.nspname, 3) <> 'pg_'
       AND pg_catalog.has_schema_privilege('meetab_staging', n.oid, 'CREATE')
   ) THEN
     RAISE EXCEPTION 'Staging role can create outside its schema: refusing provisioning';
@@ -60,7 +60,7 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname NOT IN ('meetab_staging', 'information_schema')
-      AND n.nspname NOT LIKE 'pg_%'
+      AND left(n.nspname, 3) <> 'pg_'
       AND CASE WHEN c.relkind IN ('r', 'p', 'v', 'm', 'f') THEN
         pg_catalog.has_table_privilege('meetab_staging', c.oid,
           'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') ELSE false END
@@ -71,7 +71,7 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname NOT IN ('meetab_staging', 'information_schema')
-      AND n.nspname NOT LIKE 'pg_%'
+      AND left(n.nspname, 3) <> 'pg_'
       -- CASE matters: planner evaluation order is not the order of AND clauses.
       AND CASE WHEN c.relkind = 'S' THEN
         pg_catalog.has_sequence_privilege('meetab_staging', c.oid, 'USAGE,SELECT,UPDATE') ELSE false END
@@ -82,7 +82,7 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_proc p
     JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname NOT IN ('meetab_staging', 'information_schema')
-      AND n.nspname NOT LIKE 'pg_%' AND p.prosecdef
+      AND left(n.nspname, 3) <> 'pg_' AND p.prosecdef
       AND pg_catalog.has_function_privilege('meetab_staging', p.oid, 'EXECUTE')
   ) THEN
     RAISE EXCEPTION 'Staging role can execute an existing privileged function: refusing provisioning';

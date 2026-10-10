@@ -264,7 +264,7 @@ async function listEvents(account,id,from,to){
 }
 const startAuth=(provider,mode,res)=>{
   const p=providers[provider];if(!p?.id||!p.secret)return send(res,503,{error:'Provider is not configured'});
-  if(!['app','web'].includes(mode))return send(res,400,{error:'Invalid mode'});
+  if(!['app','web'].includes(mode)&&!(mode==='staging'&&process.env.STAGING_PREVIEW_MODE==='1'))return send(res,400,{error:'Invalid mode'});
   const state=rand(),verifier=rand(),challenge=crypto.createHash('sha256').update(verifier).digest('base64url');
   pending.set(state,{provider,mode,verifier,expires:Date.now()+10*60000});
   const q=new URLSearchParams({client_id:p.id,response_type:'code',redirect_uri:`${API_ORIGIN}/auth/${provider}/callback`,response_mode:'query',scope:p.scope,state,code_challenge:challenge,code_challenge_method:'S256'});

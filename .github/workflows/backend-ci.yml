@@ -56,3 +56,5 @@ jobs:
         run: node tests/android-staging-auth.cjs
       - name: Verify sign-in proof belongs to the initiating app or tab
         run: node tests/oauth-ticket-proof.cjs
+      - name: Verify calendar selection across calendar and IT-only accounts
+        run: node tests/calendar-access-context.cjs

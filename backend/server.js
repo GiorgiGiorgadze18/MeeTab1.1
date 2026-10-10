@@ -333,7 +333,12 @@ async function handler(req,res){
     if(origin&&origin!==front.origin&&origin!==APP_ORIGIN)return send(res,403,{error:'Invalid origin'},origin);
     if(parts[0]!=='api')return send(res,404,{error:'Not found'},origin);
     const {account,hash}=authenticate(req);
-    if(url.pathname==='/api/me'&&req.method==='GET')return send(res,200,{provider:account.provider,name:account.name,email:account.email},origin);
+    if(url.pathname==='/api/me'&&req.method==='GET'){
+      // Own permitted IDs are UI context only; every calendar action still checks the ACL.
+      const calendarIds=ROOM_ACCESS?(ROOM_ACCESS[itAdminIdentity(account)]?.calendars||[])
+        .filter(id=>allowedRoom(account,'calendars',id)):(verifiedItAdmin(account)?null:[]);
+      return send(res,200,{provider:account.provider,name:account.name,email:account.email,calendarIds},origin);
+    }
     if(url.pathname==='/api/events'&&req.method==='GET'&&rateLimit(req,res,origin,'calendar-read',hash,100,60000))return;
     if(url.pathname==='/api/events'&&req.method==='POST'&&rateLimit(req,res,origin,'calendar-write',hash,12,60000))return;
     if(url.pathname==='/api/logout'&&req.method==='POST'){delete db.sessions[hash];save();return send(res,200,{ok:true},origin);}
